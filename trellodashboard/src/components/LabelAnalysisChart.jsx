@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -9,6 +10,7 @@ import {
   Legend
 } from 'chart.js';
 import { generateLabelAnalysisDataset } from '../utils/labelAnalysisProcessor';
+import CardsListModal from './CardsListModal';
 
 ChartJS.register(
   CategoryScale,
@@ -20,6 +22,8 @@ ChartJS.register(
 );
 
 const LabelAnalysisChart = ({ cards, periodRange, dark = true }) => {
+  const [selectedLabel, setSelectedLabel] = useState(null);
+
   if (!cards || !periodRange) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -74,6 +78,18 @@ const LabelAnalysisChart = ({ cards, periodRange, dark = true }) => {
   const options = {
     responsive: true,
     maintainAspectRatio: false,
+    onClick: (event, elements) => {
+      if (!elements || elements.length === 0) return;
+      const index = elements[0].index;
+      const item = labelAnalysis[index];
+      if (!item) return;
+      setSelectedLabel(item);
+    },
+    onHover: (event, elements) => {
+      if (event.native) {
+        event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+      }
+    },
     interaction: {
       mode: 'index',
       intersect: false
@@ -235,6 +251,34 @@ const LabelAnalysisChart = ({ cards, periodRange, dark = true }) => {
           ))}
         </div>
       </div>
+
+      {/* Modal de detalhes do tipo clicado */}
+      {selectedLabel && (
+        <CardsListModal
+          title={selectedLabel.labelName}
+          subtitle="Análise por Tipo de Processo"
+          sections={[
+            {
+              title: 'Em Andamento',
+              dotColor: 'bg-yellow-500',
+              accentColor: dark ? 'text-yellow-400' : 'text-yellow-600',
+              badgeColor: dark ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-700',
+              cards: selectedLabel.cards.filter(c => !c.isComplete && !c.isClosed),
+              dateField: 'creationDate',
+            },
+            {
+              title: 'Concluídos',
+              dotColor: 'bg-green-500',
+              accentColor: dark ? 'text-green-400' : 'text-green-600',
+              badgeColor: dark ? 'bg-green-500/20 text-green-400' : 'bg-green-100 text-green-700',
+              cards: selectedLabel.cards.filter(c => c.isComplete),
+              dateField: 'completionDate',
+            },
+          ]}
+          dark={dark}
+          onClose={() => setSelectedLabel(null)}
+        />
+      )}
     </div>
   );
 };

@@ -256,10 +256,6 @@ export const getCompleteBoardData = async () => {
       getMembers(),
     ]);
     
-    // Fetch actions separately with pagination support (up to 15000 actions = 15 pages)
-    const actions = await getBoardActionsMultiple(15);
-
-    
     return {
       board,
       lists,
@@ -267,7 +263,6 @@ export const getCompleteBoardData = async () => {
       labels,
       customFields,
       members,
-      actions,
     };
   } catch (error) {
     console.error('Error fetching complete board data:', error);

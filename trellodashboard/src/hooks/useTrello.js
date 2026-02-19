@@ -55,7 +55,6 @@ export const useTrelloBoard = (options = {}) => {
     labels: [],
     customFields: [],
     members: [],
-    actions: [],
     
     // Normalized data
     normalizedData: null,

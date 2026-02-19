@@ -1,3 +1,4 @@
+import { useState, useRef } from 'react';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -10,7 +11,8 @@ import {
   Legend,
   Filler
 } from 'chart.js';
-import { generateEvolutionDataset } from '../utils/chartDataProcessor';
+import { generateEvolutionDataset, getCardsForDateKey } from '../utils/chartDataProcessor';
+import EvolutionCardsModal from './EvolutionCardsModal';
 
 // Registrar componentes do Chart.js
 ChartJS.register(
@@ -25,6 +27,9 @@ ChartJS.register(
 );
 
 const EvolutionChart = ({ cards, periodRange, dark = true }) => {
+  const chartRef = useRef(null);
+  const [selectedPoint, setSelectedPoint] = useState(null);
+
   if (!cards || !periodRange) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -84,6 +89,19 @@ const EvolutionChart = ({ cards, periodRange, dark = true }) => {
   const options = {
     responsive: true,
     maintainAspectRatio: false,
+    onClick: (event, elements) => {
+      if (!elements || elements.length === 0) return;
+      const index = elements[0].index;
+      const dateKey = evolutionData.dateKeys[index];
+      const label = evolutionData.labels[index];
+      const { newCards, completedCards } = getCardsForDateKey(cards, dateKey, evolutionData.granularity);
+      setSelectedPoint({ dateKey, label, newCards, completedCards });
+    },
+    onHover: (event, elements) => {
+      if (event.native) {
+        event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+      }
+    },
     plugins: {
       legend: {
         display: true,
@@ -174,7 +192,7 @@ const EvolutionChart = ({ cards, periodRange, dark = true }) => {
 
       {/* Gráfico */}
       <div className="h-80">
-        <Line data={chartData} options={options} />
+        <Line ref={chartRef} data={chartData} options={options} />
       </div>
 
       {/* Resumo abaixo do gráfico */}
@@ -184,7 +202,7 @@ const EvolutionChart = ({ cards, periodRange, dark = true }) => {
             Total de Novos
           </p>
           <p className={`text-xl font-bold ${dark ? 'text-blue-400' : 'text-blue-600'}`}>
-            {evolutionData.series.created.total}
+            {evolutionData.totals?.created ?? 0}
           </p>
         </div>
         <div className={`p-3 rounded-lg ${dark ? 'bg-neutral-900' : 'bg-neutral-50'}`}>
@@ -192,10 +210,17 @@ const EvolutionChart = ({ cards, periodRange, dark = true }) => {
             Total de Concluídos
           </p>
           <p className={`text-xl font-bold ${dark ? 'text-green-400' : 'text-green-600'}`}>
-            {evolutionData.series.completed.total}
+            {evolutionData.totals?.completed ?? 0}
           </p>
         </div>
       </div>
+
+      {/* Modal de detalhes do ponto clicado */}
+      <EvolutionCardsModal
+        point={selectedPoint}
+        dark={dark}
+        onClose={() => setSelectedPoint(null)}
+      />
     </div>
   );
 };

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -9,6 +10,7 @@ import {
   Legend
 } from 'chart.js';
 import { generateMemberAnalysisDataset } from '../utils/memberAnalysisProcessor';
+import CardsListModal from './CardsListModal';
 
 ChartJS.register(
   CategoryScale,
@@ -20,6 +22,8 @@ ChartJS.register(
 );
 
 const MemberAnalysisChart = ({ cards, periodRange, dark = true }) => {
+  const [selectedMember, setSelectedMember] = useState(null);
+
   if (!cards || !periodRange) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -76,6 +80,18 @@ const MemberAnalysisChart = ({ cards, periodRange, dark = true }) => {
   const options = {
     responsive: true,
     maintainAspectRatio: false,
+    onClick: (event, elements) => {
+      if (!elements || elements.length === 0) return;
+      const index = elements[0].index;
+      const item = topMembers[index];
+      if (!item) return;
+      setSelectedMember(item);
+    },
+    onHover: (event, elements) => {
+      if (event.native) {
+        event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+      }
+    },
     interaction: {
       mode: 'index',
       intersect: false
@@ -241,6 +257,34 @@ const MemberAnalysisChart = ({ cards, periodRange, dark = true }) => {
           ))}
         </div>
       </div>
+
+      {/* Modal de detalhes do colaborador clicado */}
+      {selectedMember && (
+        <CardsListModal
+          title={selectedMember.memberName}
+          subtitle="Análise por Colaborador"
+          sections={[
+            {
+              title: 'Em Andamento',
+              dotColor: 'bg-yellow-500',
+              accentColor: dark ? 'text-yellow-400' : 'text-yellow-600',
+              badgeColor: dark ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-700',
+              cards: selectedMember.cards.filter(c => !c.isComplete && !c.isClosed),
+              dateField: 'creationDate',
+            },
+            {
+              title: 'Concluídos',
+              dotColor: 'bg-green-500',
+              accentColor: dark ? 'text-green-400' : 'text-green-600',
+              badgeColor: dark ? 'bg-green-500/20 text-green-400' : 'bg-green-100 text-green-700',
+              cards: selectedMember.cards.filter(c => c.isComplete),
+              dateField: 'completionDate',
+            },
+          ]}
+          dark={dark}
+          onClose={() => setSelectedMember(null)}
+        />
+      )}
     </div>
   );
 };

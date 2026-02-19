@@ -8,6 +8,7 @@ import MemberAnalysisChart from './MemberAnalysisChart';
 import HorizontalAnalysisDashboard from './HorizontalAnalysisDashboard';
 import MemberProcessTypeBlocks from './MemberProcessTypeBlocks';
 import KPIsPanel from './KPIsPanel';
+import ProcessVennDiagram from './ProcessVennDiagram';
 import usePeriodFilter from '../hooks/usePeriodFilter';
 
 const DashboardV2 = ({ dark = true, normalizedData = null }) => {
@@ -110,6 +111,16 @@ const DashboardV2 = ({ dark = true, normalizedData = null }) => {
             dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
           } rounded-2xl p-6 mb-6`}>
             <KPIsPanel
+              cards={normalizedData.cards}
+              periodRange={periodRange}
+              dark={dark}
+            />
+          </div>
+
+          <div className={`${
+            dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
+          } rounded-2xl p-6 mb-6`}>
+            <ProcessVennDiagram
               cards={normalizedData.cards}
               periodRange={periodRange}
               dark={dark}

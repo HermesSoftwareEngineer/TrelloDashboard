@@ -9,7 +9,6 @@
  * @param {Object} card - Raw card data from Trello
  * @param {Array} lists - All lists from the board
  * @param {Array} members - All members from the board
- * @param {Array} actions - All actions from the board (optional)
  * @returns {Object} Normalized card object
  */
 const extractCreationDateFromId = (cardId) => {
@@ -20,44 +19,17 @@ const extractCreationDateFromId = (cardId) => {
   return new Date(seconds * 1000);
 };
 
-export const normalizeCard = (card, lists = [], members = [], actions = []) => {
+export const normalizeCard = (card, lists = [], members = []) => {
   // Get creation date: prefer 'start' field (manually set by user)
-  // If not set, find from actions (createCard action)
   // Fallback: derive from card ID (MongoDB ObjectID timestamp)
   let creationDate = null;
   
   if (card.start) {
     creationDate = new Date(card.start);
-  } else if (actions && Array.isArray(actions)) {
-    // Find the 'createCard' action for this card
-    const createAction = actions.find(action => 
-      action.type === 'createCard' && action.data?.card?.id === card.id
-    );
-    if (createAction && createAction.date) {
-      creationDate = new Date(createAction.date);
-    }
   }
 
   if (!creationDate) {
     creationDate = extractCreationDateFromId(card.id);
-  }
-  
-  // Log detalhado para cards recentes
-  if (card.name && (card.name.toLowerCase().includes('rescis') || card.name.toLowerCase().includes('template') || card.name.includes('2026') || card.name.includes('2025'))) {
-    console.log(`[NormalizeCard DEBUG] ${card.name}`);
-    console.log(`  - start: ${card.start || 'null'}`);
-    console.log(`  - dateLastActivity: ${card.dateLastActivity || 'null'}`);
-    console.log(`  - creationDate (final): ${creationDate ? creationDate.toLocaleString('pt-BR') : 'null'}`);
-    console.log(`  - actions length: ${actions ? actions.length : 0}`);
-    if (actions) {
-      const createActions = actions.filter(a => a.type === 'createCard' && a.data?.card?.id === card.id);
-      console.log(`  - createCard actions encontradas: ${createActions.length}`);
-      if (createActions.length > 0) {
-        createActions.forEach(a => {
-          console.log(`    -> ${new Date(a.date).toLocaleString('pt-BR')}`);
-        });
-      }
-    }
   }
   
   // Get completion date: only if card is marked as complete
@@ -149,16 +121,15 @@ export const normalizeCard = (card, lists = [], members = [], actions = []) => {
  * @param {Array} cards - Raw cards from Trello API
  * @param {Array} lists - All lists from the board
  * @param {Array} members - All members from the board
- * @param {Array} actions - All actions from the board (optional)
  * @returns {Array} Array of normalized cards
  */
-export const normalizeCards = (cards, lists, members, actions = []) => {
+export const normalizeCards = (cards, lists, members) => {
   if (!Array.isArray(cards)) {
     console.warn('normalizeCards: cards is not an array', cards);
     return [];
   }
   
-  return cards.map(card => normalizeCard(card, lists, members, actions));
+  return cards.map(card => normalizeCard(card, lists, members));
 };
 
 /**
@@ -338,12 +309,10 @@ export const groupAndCalculate = (cards, groupBy) => {
  * @returns {Object} Normalized and structured data
  */
 export const normalizeBoardData = (rawData) => {
-  const { board, lists, cards, labels, members, actions } = rawData;
+  const { board, lists, cards, labels, members } = rawData;
   
-  console.log(`[NormalizeBoardData] Totais: ${cards?.length || 0} cards, ${actions?.length || 0} actions`);
-  
-  // Normalize cards with context - PASSA ACTIONS para encontrar data de criação real
-  const normalizedCards = normalizeCards(cards, lists, members, actions || []);
+  // Normalize cards with context
+  const normalizedCards = normalizeCards(cards, lists, members);
   
   // Filter active lists (not closed) and sort by position
   const activeLists = lists
@@ -384,7 +353,6 @@ export const normalizeBoardData = (rawData) => {
       totalMembers: processedMembers.length,
       totalLists: activeLists.length,
     },
-    rawActions: actions, // Keep for future use
     lastFetch: new Date(),
   };
 };

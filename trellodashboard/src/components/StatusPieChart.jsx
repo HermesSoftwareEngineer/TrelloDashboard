@@ -83,6 +83,8 @@ const StatusPieChart = ({ cards, periodRange, dark = true, variant = 'pie' }) =>
                 return {
                   text: `${label}: ${value} (${percentage}%)`,
                   fillStyle: data.datasets[0].backgroundColor[i],
+                  strokeStyle: data.datasets[0].backgroundColor[i],
+                  fontColor: dark ? '#a3a3a3' : '#525252',
                   hidden: false,
                   index: i
                 };

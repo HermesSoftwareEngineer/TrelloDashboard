@@ -3,20 +3,21 @@
  * 
  * Lógica para classificação e agregação de status dos cards por período.
  * Gera dados para gráfico de pizza mostrando distribuição de status.
+ * 
+ * REGRAS DE CONTAGEM (independentes, não exclusivas):
+ * - NOVO: criado dentro do período
+ * - CONCLUÍDO: concluído dentro do período
+ * - EM ANDAMENTO: criado antes ou durante o período e ainda não concluído
+ * Um mesmo card pode ser contado em mais de uma categoria.
  */
 
 /**
- * Classifica um card em uma das três categorias de status
- * 
- * REGRAS DE CLASSIFICAÇÃO (mutuamente exclusivas, por ordem de prioridade):
- * 1. CONCLUÍDO: Card concluído dentro do período (maior prioridade)
- * 2. NOVO: Card criado no período e não concluído dentro dele
- * 3. EM ANDAMENTO: Card criado antes/durante período, não concluído ou concluído após período
+ * Classifica o status primário de um card para exibição individual
  * 
  * @param {Object} card - Card normalizado
  * @param {Date} startDate - Data inicial do período
  * @param {Date} endDate - Data final do período
- * @returns {'completed'|'new'|'in-progress'} Status do card
+ * @returns {'completed'|'new'|'in-progress'|null}
  */
 export function classifyCardStatus(card, startDate, endDate) {
   if (!card) return null;
@@ -24,38 +25,34 @@ export function classifyCardStatus(card, startDate, endDate) {
   const createdAt = card.creationDate ? new Date(card.creationDate) : null;
   const completedAt = card.completionDate ? new Date(card.completionDate) : null;
 
-  if (!createdAt) return null; // Card sem data de criação não pode ser classificado
+  if (!createdAt) return null;
 
   const start = new Date(startDate);
   const end = new Date(endDate);
-  
-  // Normalizar para comparação (início do dia)
   start.setHours(0, 0, 0, 0);
   end.setHours(23, 59, 59, 999);
 
-  // 1. PRIORIDADE ALTA: Concluído no período
+  // Concluído no período
   if (completedAt && completedAt >= start && completedAt <= end) {
     return 'completed';
   }
 
-  // 2. PRIORIDADE MÉDIA: Novo no período (criado no período e não concluído nele)
+  // Novo no período
   if (createdAt >= start && createdAt <= end) {
     return 'new';
   }
 
-  // 3. PRIORIDADE BAIXA: Em andamento
-  // - Criado antes ou durante o período
-  // - Não concluído, ou concluído após o período
+  // Em andamento: criado antes/durante, não concluído ou concluído após
   if (createdAt <= end && (!completedAt || completedAt > end)) {
     return 'in-progress';
   }
 
-  // Card não relevante para este período
   return null;
 }
 
 /**
- * Conta cards por categoria de status
+ * Conta cards por categoria de status (contagens independentes)
+ * Um card pode ser contado em mais de uma categoria.
  * 
  * @param {Array} cards - Array de cards normalizados
  * @param {Date} startDate - Data inicial do período
@@ -72,19 +69,39 @@ export function countCardsByStatus(cards, startDate, endDate) {
 
   if (!Array.isArray(cards)) return counts;
 
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(23, 59, 59, 999);
+
   cards.forEach(card => {
-    const status = classifyCardStatus(card, startDate, endDate);
-    if (status) {
-      counts[status]++;
-      counts.total++;
+    if (!card.creationDate) return;
+
+    const createdAt = new Date(card.creationDate);
+    const completedAt = card.completionDate ? new Date(card.completionDate) : null;
+
+    // Novo: criado no período
+    if (createdAt >= start && createdAt <= end) {
+      counts.new++;
+    }
+
+    // Concluído: concluído no período
+    if (completedAt && completedAt >= start && completedAt <= end) {
+      counts.completed++;
+    }
+
+    // Em andamento: criado antes ou durante, não concluído ou concluído após o período
+    if (createdAt <= end && (!completedAt || completedAt > end)) {
+      counts['in-progress']++;
     }
   });
 
+  counts.total = counts.new + counts['in-progress'] + counts.completed;
   return counts;
 }
 
 /**
- * Filtra cards por status específico
+ * Filtra cards por status específico (independente)
  * 
  * @param {Array} cards - Array de cards normalizados
  * @param {'new'|'in-progress'|'completed'} status - Status desejado
@@ -94,10 +111,28 @@ export function countCardsByStatus(cards, startDate, endDate) {
  */
 export function filterCardsByStatus(cards, status, startDate, endDate) {
   if (!Array.isArray(cards)) return [];
-  
-  return cards.filter(card => 
-    classifyCardStatus(card, startDate, endDate) === status
-  );
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(23, 59, 59, 999);
+
+  return cards.filter(card => {
+    if (!card.creationDate) return false;
+    const createdAt = new Date(card.creationDate);
+    const completedAt = card.completionDate ? new Date(card.completionDate) : null;
+
+    switch (status) {
+      case 'new':
+        return createdAt >= start && createdAt <= end;
+      case 'completed':
+        return completedAt && completedAt >= start && completedAt <= end;
+      case 'in-progress':
+        return createdAt <= end && (!completedAt || completedAt > end);
+      default:
+        return false;
+    }
+  });
 }
 
 /**

@@ -399,6 +399,67 @@ export const generateCompleteEvolutionDataset = (
   return dataset;
 };
 
+/**
+ * Get the date range (start, end) for a given date key and granularity
+ * @param {string} dateKey - Date key from getDateKey
+ * @param {string} granularity - Granularity type
+ * @returns {{ start: Date, end: Date }}
+ */
+export const getDateRangeForKey = (dateKey, granularity) => {
+  switch (granularity) {
+    case GRANULARITY.DAILY: {
+      const [year, month, day] = dateKey.split('-').map(Number);
+      const start = new Date(year, month - 1, day, 0, 0, 0, 0);
+      const end = new Date(year, month - 1, day, 23, 59, 59, 999);
+      return { start, end };
+    }
+    case GRANULARITY.WEEKLY: {
+      const [year, month, day] = dateKey.split('-').map(Number);
+      const start = new Date(year, month - 1, day, 0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+    case GRANULARITY.MONTHLY: {
+      const [year, month] = dateKey.split('-').map(Number);
+      const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
+      const end = new Date(year, month, 0, 23, 59, 59, 999);
+      return { start, end };
+    }
+    default:
+      return null;
+  }
+};
+
+/**
+ * Get new and completed cards for a specific date key
+ * @param {Array} cards - Normalized cards
+ * @param {string} dateKey - Date key from getDateKey
+ * @param {string} granularity - Granularity type
+ * @returns {{ newCards: Array, completedCards: Array }}
+ */
+export const getCardsForDateKey = (cards, dateKey, granularity) => {
+  const range = getDateRangeForKey(dateKey, granularity);
+  if (!range || !Array.isArray(cards)) return { newCards: [], completedCards: [] };
+
+  const { start, end } = range;
+
+  const newCards = cards.filter(card => {
+    if (!card.creationDate) return false;
+    const d = new Date(card.creationDate);
+    return d >= start && d <= end;
+  });
+
+  const completedCards = cards.filter(card => {
+    if (!card.completionDate) return false;
+    const d = new Date(card.completionDate);
+    return d >= start && d <= end;
+  });
+
+  return { newCards, completedCards };
+};
+
 export default {
   GRANULARITY,
   determineGranularity,
@@ -407,6 +468,8 @@ export default {
   generateDateKeys,
   aggregateByCreation,
   aggregateByCompletion,
+  getDateRangeForKey,
+  getCardsForDateKey,
   generateEvolutionDataset,
   calculateCumulative,
   generateEvolutionDatasetWithCumulative,
