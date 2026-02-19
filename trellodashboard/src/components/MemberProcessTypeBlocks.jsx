@@ -64,7 +64,7 @@ const MemberProcessTypeBlocks = ({ cards, periodRange, dark = true }) => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {sortedMembers.map(member => {
-          const totalCount = member.processTypes.reduce((sum, type) => sum + type.count, 0);
+          const totalCount = member.totalCards ?? member.processTypes.reduce((sum, type) => sum + type.count, 0);
 
           return (
             <div

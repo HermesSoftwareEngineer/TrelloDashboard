@@ -203,12 +203,12 @@ export function calculateMemberProductivity(cards, startDate = null, endDate = n
 export function calculateMemberTimeByProcessType(cards, startDate = null, endDate = null) {
   if (!Array.isArray(cards)) return {};
   
-  // Filtrar apenas cards concluídos com tempo válido
+  // Filtrar apenas cards concluídos com datas disponíveis para calcular tempo
   let completedCards = cards.filter(card => 
     card.isComplete && 
-    card.processTimeDays !== null && 
-    card.processTimeDays >= 0 &&
-    !card.isClosed
+    !card.isClosed &&
+    card.completionDate &&
+    card.creationDate
   );
   
   // Aplicar filtro de período se fornecido
@@ -235,6 +235,11 @@ export function calculateMemberTimeByProcessType(cards, startDate = null, endDat
     const typeStats = {};
     
     group.cards.forEach(card => {
+      // Calcular tempo de processo inline (usa processTimeDays se válido, senão calcula das datas)
+      const timeDays = (card.processTimeDays !== null && card.processTimeDays >= 0)
+        ? card.processTimeDays
+        : Math.round((new Date(card.completionDate) - new Date(card.creationDate)) / (1000 * 60 * 60 * 24));
+
       // Cards podem ter múltiplos tipos
       if (!card.processTypes || card.processTypes.length === 0) {
         // Sem tipo
@@ -246,7 +251,7 @@ export function calculateMemberTimeByProcessType(cards, startDate = null, endDat
             times: []
           };
         }
-        typeStats['no-type'].times.push(card.processTimeDays);
+        typeStats['no-type'].times.push(timeDays);
       } else {
         card.processTypes.forEach(type => {
           if (!typeStats[type.id]) {
@@ -257,7 +262,7 @@ export function calculateMemberTimeByProcessType(cards, startDate = null, endDat
               times: []
             };
           }
-          typeStats[type.id].times.push(card.processTimeDays);
+          typeStats[type.id].times.push(timeDays);
         });
       }
     });
@@ -281,6 +286,7 @@ export function calculateMemberTimeByProcessType(cards, startDate = null, endDat
       memberName: group.name,
       username: group.username,
       avatarUrl: group.avatarUrl,
+      totalCards: group.cards.length,
       processTypes: processTypes.sort((a, b) => b.count - a.count)
     };
   });
@@ -405,15 +411,26 @@ export function generateMemberAnalysisDataset(cards, startDate = null, endDate =
   // Gerar estatísticas completas para cada membro
   const results = Object.values(grouped).map(group => {
     const allCards = group.cards;
-    const completedCards = allCards.filter(card => card.isComplete);
+    const completedCards = allCards.filter(card => {
+      if (!card.isComplete) return false;
+      if (!startDate || !endDate) return true;
+      const s = new Date(startDate); s.setHours(0, 0, 0, 0);
+      const e = new Date(endDate); e.setHours(23, 59, 59, 999);
+      return card.completionDate && card.completionDate >= s && card.completionDate <= e;
+    });
     const inProgressCards = allCards.filter(card => !card.isComplete);
     
-    // Calcular tempo médio de processo
-    const completedWithTime = completedCards.filter(card => 
-      card.processTimeDays !== null && card.processTimeDays >= 0
+    // Calcular tempo médio de processo (usa processTimeDays ou calcula inline das datas)
+    const completedWithTime = completedCards.filter(card =>
+      card.completionDate && card.creationDate
     );
     const avgTime = completedWithTime.length > 0
-      ? completedWithTime.reduce((sum, card) => sum + card.processTimeDays, 0) / completedWithTime.length
+      ? completedWithTime.reduce((sum, card) => {
+          const t = (card.processTimeDays !== null && card.processTimeDays >= 0)
+            ? card.processTimeDays
+            : Math.round((new Date(card.completionDate) - new Date(card.creationDate)) / (1000 * 60 * 60 * 24));
+          return sum + t;
+        }, 0) / completedWithTime.length
       : 0;
     
     // Produtividade
