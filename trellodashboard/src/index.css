@@ -2,9 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
+html, body {
   margin: 0;
-  min-width: 320px;
+  padding: 0;
+  width: 100%;
+  height: 100%;
   min-height: 100vh;
 }
 
@@ -17,3 +19,36 @@ body {
   body { background: #fff !important; color: #000 !important; }
   * { box-shadow: none !important; }
 }
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.scrollbar-dark {
+  --scrollbar-track: rgba(24, 24, 24, 0.6);
+  --scrollbar-thumb: rgba(82, 82, 82, 0.8);
+}
+
+.scrollbar-light {
+  --scrollbar-track: rgba(243, 244, 246, 0.9);
+  --scrollbar-thumb: rgba(148, 163, 184, 0.9);
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 9999px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+

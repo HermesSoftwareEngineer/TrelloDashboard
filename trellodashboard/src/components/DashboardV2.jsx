@@ -1,69 +1,182 @@
-﻿import { useState } from 'react';
-import { getComprehensiveMetrics } from '../utils/analyticsV2';
-import PeriodFilter from './PeriodFilter';
-import { LineChart, BarChart, DoughnutChart } from './Charts';
+﻿import PeriodFilter from './PeriodFilter';
+import EvolutionChart from './EvolutionChart';
+import StatusPieChart from './StatusPieChart';
+import LabelAnalysisChart from './LabelAnalysisChart';
+import ListAnalysisChart from './ListAnalysisChart';
+import MemberAnalysisChart from './MemberAnalysisChart';
+import MemberProcessTypeBlocks from './MemberProcessTypeBlocks';
+import KPIsPanel from './KPIsPanel';
+import usePeriodFilter from '../hooks/usePeriodFilter';
 
-const DashboardV2 = ({ cards, lists, members, actions, dark = true }) => {
-  const [selectedPeriod, setSelectedPeriod] = useState('month');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+const DashboardV2 = ({ dark = true, normalizedData = null }) => {
+  const { periodRange, filterCards } = usePeriodFilter();
+  
 
-  if (!cards || cards.length === 0) return null;
-
-  const effectivePeriod =
-    selectedPeriod === 'custom' && customStart && customEnd ? 'custom' :
-    selectedPeriod === 'custom' ? 'month' : selectedPeriod;
-
-  const metrics = getComprehensiveMetrics(
-    cards, lists, members, actions,
-    effectivePeriod, customStart, customEnd
-  );
-
-  const alpha = (hex, a) => {
-    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r},${g},${b},${a})`;
-  };
-
-  const RED = ['#ef4444', '#dc2626', '#b91c1c', '#991b1b', '#7f1d1d', '#fca5a5', '#f87171', '#fecaca'];
-
-  const timeSeriesData = {
-    labels: metrics.timeSeries.map(d => d.label),
-    datasets: [
-      { label: 'Novos', data: metrics.timeSeries.map(d => d.new), borderColor: '#ef4444', backgroundColor: alpha('#ef4444', 0.06), fill: true, tension: 0.4, pointRadius: 2, pointHoverRadius: 5, borderWidth: 1.5 },
-      { label: 'Concluidos', data: metrics.timeSeries.map(d => d.completed), borderColor: '#b91c1c', backgroundColor: alpha('#b91c1c', 0.06), fill: true, tension: 0.4, pointRadius: 2, pointHoverRadius: 5, borderWidth: 1.5 },
-    ],
-  };
-
-  const statusData = {
-    labels: ['Novos', 'Em Andamento', 'Concluidos'],
-    datasets: [{ data: [metrics.summary.new, metrics.summary.inProgress, metrics.summary.completed], backgroundColor: [alpha('#ef4444', 0.9), alpha('#dc2626', 0.7), alpha('#7f1d1d', 0.9)], borderWidth: 0, hoverOffset: 4 }],
-  };
-
-  const labelData = {
-    labels: metrics.byLabel.map(item => item.label.name),
-    datasets: [{ label: 'Dias', data: metrics.byLabel.map(item => parseFloat(item.average)), backgroundColor: RED.map(c => alpha(c, 0.85)), borderRadius: 4, borderSkipped: false }],
-  };
-
-  const memberData = {
-    labels: metrics.byMember.map(item => item.memberName),
-    datasets: [{ label: 'Dias', data: metrics.byMember.map(item => parseFloat(item.average)), backgroundColor: alpha('#dc2626', 0.85), borderRadius: 4, borderSkipped: false }],
-  };
-
+  
+  if (!normalizedData) {
+    return (
+      <div className="w-full p-6">
+        <p className="text-sm text-neutral-500">Nenhum dado disponível</p>
+      </div>
+    );
+  }
+  
+  // Apply period filter to cards
+  const filteredData = filterCards(normalizedData.cards);
+  const { cards: filteredCards, counts, averages } = filteredData;
+  
   return (
-    <div style={{ maxWidth: 1280, margin: '0 auto', padding: '2rem 1.5rem' }}>
-      <PeriodFilter
-        selectedPeriod={selectedPeriod}
-        onPeriodChange={setSelectedPeriod}
-        customStart={customStart}
-        customEnd={customEnd}
-        onCustomDateChange={(type, val) => type === 'start' ? setCustomStart(val) : setCustomEnd(val)}
-        dark={dark}
-      />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div style={{ height: 224 }}><LineChart data={timeSeriesData} dark={dark} /></div>
-        <div style={{ height: 224 }}><DoughnutChart data={statusData} dark={dark} /></div>
-        {metrics.byLabel?.length > 0 && <div style={{ height: 224 }}><BarChart data={labelData} dark={dark} /></div>}
-        {metrics.byMember?.length > 0 && <div style={{ height: 224 }}><BarChart data={memberData} dark={dark} /></div>}
+    <div className="w-full p-6">
+      {/* Period Filter */}
+      <PeriodFilter dark={dark} className="mb-6" />
+      
+      {/* Debug Info - Temporary */}
+      <div className={`${
+        dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
+      } rounded-2xl p-6 mb-6`}>
+        <h2 className={`text-xs font-bold uppercase tracking-widest mb-4 ${
+          dark ? 'text-[#737373]' : 'text-[#737373]'
+        }`}>
+          Resumo do Período Filtrado
+        </h2>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div>
+            <p className={`text-xs mb-1 ${dark ? 'text-[#525252]' : 'text-[#a3a3a3]'}`}>
+              Criados
+            </p>
+            <p className={`text-2xl font-bold ${dark ? 'text-[#f5f5f5]' : 'text-[#0c0c0c]'}`}>
+              {counts.created}
+            </p>
+            <p className={`text-xs ${dark ? 'text-[#525252]' : 'text-[#737373]'}`}>
+              {averages.createdPerDay}/dia
+            </p>
+          </div>
+          
+          <div>
+            <p className={`text-xs mb-1 ${dark ? 'text-[#525252]' : 'text-[#a3a3a3]'}`}>
+              Concluídos
+            </p>
+            <p className={`text-2xl font-bold ${dark ? 'text-[#f5f5f5]' : 'text-[#0c0c0c]'}`}>
+              {counts.completed}
+            </p>
+            <p className={`text-xs ${dark ? 'text-[#525252]' : 'text-[#737373]'}`}>
+              {averages.completedPerDay}/dia
+            </p>
+          </div>
+          
+          <div>
+            <p className={`text-xs mb-1 ${dark ? 'text-[#525252]' : 'text-[#a3a3a3]'}`}>
+              Em Andamento
+            </p>
+            <p className={`text-2xl font-bold ${dark ? 'text-[#f5f5f5]' : 'text-[#0c0c0c]'}`}>
+              {counts.inProgress}
+            </p>
+          </div>
+          
+          <div>
+            <p className={`text-xs mb-1 ${dark ? 'text-[#525252]' : 'text-[#a3a3a3]'}`}>
+              Com Atividade
+            </p>
+            <p className={`text-2xl font-bold ${dark ? 'text-[#f5f5f5]' : 'text-[#0c0c0c]'}`}>
+              {counts.active}
+            </p>
+          </div>
+        </div>
+        
+        <div className={`text-xs ${dark ? 'text-[#525252]' : 'text-[#737373]'}`}>
+          <p><strong>Período:</strong> {periodRange.label}</p>
+          <p><strong>Dias:</strong> {periodRange.days}</p>
+          <p><strong>Data Início:</strong> {periodRange.startDate?.toLocaleDateString?.() || 'N/A'}</p>
+          <p><strong>Data Fim:</strong> {periodRange.endDate?.toLocaleDateString?.() || 'N/A'}</p>
+          <p><strong>Total de cards no board:</strong> {normalizedData.cards.length}</p>
+          <p><strong>Cards com creationDate:</strong> {normalizedData.cards.filter(c => c.creationDate).length}</p>
+          <p><strong>Cards com completionDate:</strong> {normalizedData.cards.filter(c => c.completionDate).length}</p>
+        </div>
+      </div>
+      
+      {/* KPIs de Vazão */}
+      <div className={`${
+        dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
+      } rounded-2xl p-6 mb-6`}>
+        <KPIsPanel 
+          cards={normalizedData.cards} 
+          periodRange={periodRange} 
+          dark={dark} 
+        />
+      </div>
+      
+      {/* Gráficos Principais (Evolução e Status) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {/* Gráfico de Evolução */}
+        <div className={`${
+          dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
+        } rounded-2xl p-6`}>
+          <EvolutionChart 
+            cards={normalizedData.cards} 
+            periodRange={periodRange} 
+            dark={dark} 
+          />
+        </div>
+        
+        {/* Gráfico de Status (Pizza) */}
+        <div className={`${
+          dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
+        } rounded-2xl p-6`}>
+          <StatusPieChart 
+            cards={normalizedData.cards} 
+            periodRange={periodRange} 
+            dark={dark}
+            variant="doughnut"
+          />
+        </div>
+      </div>
+
+      {/* Análises Avançadas */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        {/* Análise por Tipo de Processo */}
+        <div className={`${
+          dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
+        } rounded-2xl p-6`}>
+          <LabelAnalysisChart 
+            cards={normalizedData.cards}
+            periodRange={periodRange}
+            dark={dark}
+          />
+        </div>
+
+        {/* Análise por Lista (Prioridade) */}
+        <div className={`${
+          dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
+        } rounded-2xl p-6`}>
+          <ListAnalysisChart 
+            cards={normalizedData.cards}
+            periodRange={periodRange}
+            dark={dark}
+          />
+        </div>
+
+        {/* Análise por Colaborador */}
+        <div className={`${
+          dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
+        } rounded-2xl p-6`}>
+          <MemberAnalysisChart 
+            cards={normalizedData.cards}
+            periodRange={periodRange}
+            dark={dark}
+          />
+        </div>
+      </div>
+
+      {/* Tipos de Processo por Colaborador */}
+      <div className={`${
+        dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
+      } rounded-2xl p-6 mb-6`}>
+        <MemberProcessTypeBlocks
+          cards={normalizedData.cards}
+          periodRange={periodRange}
+          dark={dark}
+        />
       </div>
     </div>
   );
