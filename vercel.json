@@ -2,10 +2,10 @@
   "buildCommand": "cd trellodashboard && npm install && npm run build",
   "outputDirectory": "trellodashboard/dist",
   "installCommand": "cd trellodashboard && npm install",
-  "routes": [
+  "rewrites": [
     {
-      "src": "^/.*",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
