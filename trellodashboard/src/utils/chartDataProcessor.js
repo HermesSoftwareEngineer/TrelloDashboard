@@ -213,12 +213,12 @@ export const generateEvolutionDataset = (cards, periodRange, customGranularity =
       created: {
         label: 'Novos Processos',
         data: dateKeys.map(key => createdData[key] || 0),
-        color: '#10b981', // green
+        color: '#3b82f6', // blue
       },
       completed: {
         label: 'Processos Concluídos',
         data: dateKeys.map(key => completedData[key] || 0),
-        color: '#3b82f6', // blue
+        color: '#10b981', // green
       }
     },
     totals: {
