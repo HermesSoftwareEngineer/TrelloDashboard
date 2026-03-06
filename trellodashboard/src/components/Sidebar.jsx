@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { FiHome, FiTarget, FiAward, FiShuffle, FiChevronsLeft, FiChevronsRight } from 'react-icons/fi';
+import { FiHome, FiTarget, FiAward, FiShuffle, FiChevronsLeft, FiChevronsRight, FiBookOpen } from 'react-icons/fi';
 
 const Sidebar = ({ isOpen, onToggle }) => {
   const navLinkClass = ({ isActive }) =>
@@ -31,6 +31,10 @@ const Sidebar = ({ isOpen, onToggle }) => {
         <NavLink to="/roleta" className={navLinkClass}>
           <FiShuffle size={18} className="flex-shrink-0" />
           <span className={`ml-3 whitespace-nowrap overflow-hidden transition-all ${isOpen ? 'w-auto opacity-100' : 'w-0 opacity-0'}`}>Roleta</span>
+        </NavLink>
+        <NavLink to="/resumo" className={navLinkClass}>
+          <FiBookOpen size={18} className="flex-shrink-0" />
+          <span className={`ml-3 whitespace-nowrap overflow-hidden transition-all ${isOpen ? 'w-auto opacity-100' : 'w-0 opacity-0'}`}>Resumo</span>
         </NavLink>
       </nav>
 

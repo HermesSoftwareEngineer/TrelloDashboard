@@ -7,6 +7,7 @@ import Layout from './components/Layout';
 import DashboardPage from './pages/DashboardPage';
 import GoalManagementPage from './pages/GoalManagementPage';
 import RoletaPage from './pages/RoletaPage';
+import ResumePage from './pages/ResumePage';
 import { FiTarget } from 'react-icons/fi';
 
 const LoadingScreen = ({ text }) => (
@@ -62,6 +63,7 @@ function App() {
         <Route index element={<DashboardPage dark={dark} setDark={setDark} normalizedData={normalizedData} refetch={refetch} />} />
         <Route path="metas" element={<GoalManagementPage />} />
         <Route path="roleta" element={<RoletaPage />} />
+        <Route path="resumo" element={<ResumePage />} />
       </Route>
     </Routes>
   );
