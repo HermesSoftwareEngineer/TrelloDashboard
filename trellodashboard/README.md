@@ -27,6 +27,7 @@ Sistema de dashboard integrado com Trello para análise de indicadores do setor 
 - ✅ Interface responsiva com tema claro/escuro
 - ✅ Atualização manual e automática
 - ✅ Filtros avançados de dados
+- ✅ **Análise de produtividade com IA (Google AI Studio)** com persistência no Supabase
 - 🔄 Dashboards interativos (em desenvolvimento)
 
 ## 🔧 Configuração
@@ -45,12 +46,44 @@ Crie um arquivo `.env` na raiz do projeto:
 VITE_TRELLO_API_KEY=sua_api_key
 VITE_TRELLO_TOKEN=seu_token
 VITE_TRELLO_BOARD_ID=id_do_board
+VITE_SUPABASE_URL=sua_url_supabase
+VITE_SUPABASE_ANON_KEY=sua_anon_key_supabase
+VITE_GOOGLE_AI_API_KEY=sua_google_ai_api_key
+VITE_GOOGLE_AI_MODEL=gemini-2.0-flash
+VITE_LANGSMITH_TRACING=false
+VITE_LANGSMITH_API_KEY=sua_langsmith_api_key
+VITE_LANGSMITH_PROJECT=trellodashboard
+VITE_LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+VITE_LANGSMITH_TIMEOUT_MS=2500
+VITE_PRODUCTIVITY_ANALYSIS_PASSWORD=sua_senha_de_autorizacao
+VITE_PRODUCTIVITY_AI_MAX_ACTIVITIES_PER_CALL=25
+VITE_PRODUCTIVITY_INSTRUCTION_PROMPT="Seja extremamente critica: so pontue quando houver evidencia explicita de que o colaborador executou a atividade. Nao suponha, nao infira e nao complete lacunas. Se a descricao estiver vaga, implicita ou sem prova de execucao, atribua 0 ponto e registre evidencia insuficiente. Para cada atividade use o formato: Acao | Evidencia literal | Regra (action_type => pontos) | Motivo. No summary, liste apenas atividades com evidencia clara e explique brevemente os casos com 0 ponto por falta de certeza."
 ```
 
 **Como obter:**
 - API Key: https://trello.com/power-ups/admin
 - Token: https://trello.com/1/authorize (com sua API Key)
 - Board ID: URL do board (`https://trello.com/b/BOARD_ID/nome`)
+- Supabase URL / Anon Key: Settings > API no projeto Supabase
+- Google AI API Key: Google AI Studio
+- LangSmith API Key: Settings > API Keys no LangSmith
+- Senha de autorização: valor definido por você no `.env`
+
+### 2.3 Lotes de atividades na análise de produtividade
+
+- Use `VITE_PRODUCTIVITY_AI_MAX_ACTIVITIES_PER_CALL` para limitar quantas atividades cada chamada de IA processa.
+- Exemplo: com limite `25` e total de `100` atividades, a análise fará `4` chamadas para a IA.
+- A cada lote processado, os dados são salvos incrementalmente no Supabase e a tela é atualizada com o progresso.
+
+### 2.2 Tracing de chamadas IA com LangSmith (opcional)
+
+- Defina `VITE_LANGSMITH_TRACING=true` para ativar o tracing.
+- As chamadas de análise em `googleAiService` serão rastreadas com inputs/outputs resumidos.
+- Se o LangSmith falhar, a análise da IA continua normalmente (fallback silencioso).
+
+### 2.1 Configurar tabelas da análise de produtividade
+
+Execute o SQL de [SUPABASE_PRODUCTIVITY_SCHEMA.sql](SUPABASE_PRODUCTIVITY_SCHEMA.sql) no SQL Editor do Supabase.
 
 ### 3. Executar o projeto
 

@@ -9,13 +9,12 @@ import {
   FiCheckCircle,
   FiAlertCircle,
   FiX,
-  FiMoon,
-  FiSun,
   FiSquare,
   FiTag,
   FiPrinter,
 } from 'react-icons/fi';
 import resumoService from '../services/resumoService';
+import { useTheme } from '../contexts/ThemeContext';
 
 const WEEKDAYS_PT = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -1104,10 +1103,7 @@ const processData = (actions, cardsWithChecklists, listsMap, selectedDate, filte
 };
 
 const ResumePage = () => {
-  const [dark, setDark] = useState(() => {
-    const stored = localStorage.getItem('resumo-dark-mode');
-    return stored === null ? true : stored === 'true';
-  });
+  const { dark } = useTheme();
 
   const [selectedDate, setSelectedDate] = useState(() => {
     const date = new Date();
@@ -1120,10 +1116,6 @@ const ResumePage = () => {
   const [rawData, setRawData] = useState({ actions: [], members: [], cardsWithChecklists: [], lists: [] });
   const [selectedMemberIds, setSelectedMemberIds] = useState([]);
   const dateInputRef = useRef(null);
-
-  useEffect(() => {
-    localStorage.setItem('resumo-dark-mode', String(dark));
-  }, [dark]);
 
   const loadData = useCallback(async (date) => {
     setIsLoading(true);
@@ -1234,14 +1226,6 @@ const ResumePage = () => {
           </div>
 
           <div className="flex items-center gap-2 ml-auto">
-            <button
-              onClick={() => setDark((prev) => !prev)}
-              className={`p-2 rounded-lg border transition-colors ${controlButtonClass}`}
-              title={dark ? 'Modo claro' : 'Modo escuro'}
-            >
-              {dark ? <FiSun size={16} /> : <FiMoon size={16} />}
-            </button>
-
             <button
               onClick={handlePrintResumo}
               className={`p-2 rounded-lg border transition-colors ${controlButtonClass}`}
