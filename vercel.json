@@ -4,6 +4,10 @@
   "installCommand": "cd trellodashboard && npm install",
   "rewrites": [
     {
+      "source": "/api/trello/(.*)",
+      "destination": "https://api.trello.com/1/$1"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

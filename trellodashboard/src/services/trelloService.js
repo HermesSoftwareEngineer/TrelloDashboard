@@ -3,7 +3,7 @@
  * Handles all interactions with the Trello API
  */
 
-const API_BASE_URL = 'https://api.trello.com/1';
+const API_BASE_URL = import.meta.env.VITE_TRELLO_API_BASE_URL || '/api/trello';
 
 // Get environment variables
 const API_KEY = import.meta.env.VITE_TRELLO_API_KEY;
@@ -14,7 +14,8 @@ const BOARD_ID = import.meta.env.VITE_TRELLO_BOARD_ID;
  * Build URL with authentication parameters
  */
 const buildUrl = (endpoint, additionalParams = {}) => {
-  const url = new URL(`${API_BASE_URL}${endpoint}`);
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+  const url = new URL(`${API_BASE_URL}${endpoint}`, origin);
   
   // Add authentication
   url.searchParams.append('key', API_KEY);

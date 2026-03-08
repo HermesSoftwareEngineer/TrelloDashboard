@@ -3,22 +3,23 @@
  * Fetches daily activity data from the Trello API for the Resumo page.
  */
 
-const API_BASE_URL = 'https://api.trello.com/1';
+const API_BASE_URL = import.meta.env.VITE_TRELLO_API_BASE_URL || '/api/trello';
 
 const API_KEY = import.meta.env.VITE_TRELLO_API_KEY;
 const TOKEN = import.meta.env.VITE_TRELLO_TOKEN;
 const BOARD_ID = import.meta.env.VITE_TRELLO_BOARD_ID;
 
 const buildUrl = (endpoint, params = {}) => {
-  const url = new URL(`${API_BASE_URL}${endpoint}`);
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+  const url = new URL(`${API_BASE_URL}${endpoint}`, origin);
   url.searchParams.append('key', API_KEY);
   url.searchParams.append('token', TOKEN);
   Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
   return url.toString();
 };
 
-const fetchFromTrello = async (url) => {
-  const response = await fetch(url);
+const fetchFromTrello = async (url, options = {}) => {
+  const response = await fetch(url, options);
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`Trello API Error: ${response.status} - ${body}`);
@@ -68,10 +69,24 @@ export const getCardsWithChecklists = async () => {
     fields: 'id,name,idList,idMembers,closed,labels',
     checklists: 'all',
     checkItemStates: true,
-    checkItem_fields: 'name,state,due,idChecklist,idMember',
+    checkItem_fields: 'id,name,state,due,idChecklist,idMember',
     filter: 'all',
   });
   return fetchFromTrello(url);
+};
+
+/**
+ * Update due date for a checklist item on a card.
+ * @param {string} cardId - Trello card ID
+ * @param {string} checkItemId - Checklist item ID
+ * @param {string} dueDateIso - ISO date string for due date
+ */
+export const updateChecklistItemDueDate = async (cardId, checkItemId, dueDateIso) => {
+  const url = buildUrl(`/cards/${cardId}/checkItem/${checkItemId}`, {
+    due: dueDateIso,
+  });
+
+  return fetchFromTrello(url, { method: 'PUT' });
 };
 
 /**
@@ -104,5 +119,6 @@ export default {
   getMembers,
   getCardsWithChecklists,
   getLists,
+  updateChecklistItemDueDate,
   getResumoDayData,
 };

@@ -8,6 +8,7 @@ import {
   FiCheckSquare,
   FiCheckCircle,
   FiAlertCircle,
+  FiEdit2,
   FiX,
   FiSquare,
   FiTag,
@@ -31,6 +32,12 @@ const toInputValue = (date) => {
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   const dd = String(date.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
+};
+
+const toDueIsoFromInput = (dateInputValue) => {
+  const [yyyy, mm, dd] = dateInputValue.split('-').map(Number);
+  const localDate = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
+  return localDate.toISOString();
 };
 
 const formatTime = (isoString) => {
@@ -844,12 +851,204 @@ const CompletedChecklistSection = ({ groups, dark }) => {
   );
 };
 
-const PendingChecklistSection = ({ groups, dark }) => {
+const getPendingItemKey = (item) => `${item.cardId || 'card'}:${item.checkItemId || item.name}`;
+
+const PendingTreatmentModal = ({
+  open,
+  onClose,
+  dark,
+  items,
+  bulkDateInput,
+  onBulkDateChange,
+  onUpdateAll,
+  isBulkUpdating,
+  rowDateInputs,
+  onRowDateChange,
+  onUpdateItem,
+  updatingItemKey,
+  error,
+  success,
+}) => {
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handleEsc = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Fechar modal"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/50"
+      />
+
+      <div className={`relative w-full max-w-6xl max-h-[90vh] rounded-xl border shadow-2xl overflow-hidden ${
+        dark ? 'bg-neutral-950 border-neutral-800' : 'bg-white border-neutral-300'
+      }`}>
+        <div className={`px-5 py-4 border-b flex items-center gap-3 ${
+          dark ? 'border-neutral-800' : 'border-neutral-200'
+        }`}>
+          <FiEdit2 size={16} className="text-red-500" />
+          <h3 className={`text-sm font-bold uppercase tracking-widest ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>
+            Tratar pendências
+          </h3>
+          <span className={`ml-auto text-xs ${dark ? 'text-neutral-500' : 'text-neutral-500'}`}>
+            {items.length} {items.length === 1 ? 'item' : 'itens'}
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className={`p-1.5 rounded border ${
+              dark
+                ? 'border-neutral-700 text-neutral-400 hover:text-white hover:bg-neutral-800'
+                : 'border-neutral-300 text-neutral-600 hover:text-black hover:bg-neutral-100'
+            }`}
+          >
+            <FiX size={14} />
+          </button>
+        </div>
+
+        <div className={`px-5 py-4 border-b ${dark ? 'border-neutral-800 bg-neutral-900/40' : 'border-neutral-200 bg-neutral-50'}`}>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className={`block text-[10px] font-semibold uppercase tracking-widest mb-1 ${dark ? 'text-neutral-500' : 'text-neutral-500'}`}>
+                Nova data (todas)
+              </label>
+              <input
+                type="date"
+                value={bulkDateInput}
+                onChange={(event) => onBulkDateChange(event.target.value)}
+                className={`px-3 py-2 rounded-lg border text-sm ${
+                  dark
+                    ? 'border-neutral-700 bg-neutral-900 text-neutral-100'
+                    : 'border-neutral-300 bg-white text-neutral-900'
+                }`}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={onUpdateAll}
+              disabled={isBulkUpdating || items.length === 0 || !bulkDateInput}
+              className="px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-widest text-white bg-red-600 hover:bg-red-500 disabled:opacity-50"
+            >
+              {isBulkUpdating ? 'Alterando...' : 'Alterar todas'}
+            </button>
+          </div>
+
+          {error && (
+            <p className="mt-3 text-xs text-red-400">{error}</p>
+          )}
+          {success && (
+            <p className={`mt-3 text-xs ${dark ? 'text-emerald-400' : 'text-emerald-700'}`}>{success}</p>
+          )}
+        </div>
+
+        <div className="overflow-auto max-h-[58vh]">
+          {items.length === 0 ? (
+            <p className={`px-5 py-6 text-sm ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>
+              Nenhuma pendência disponível.
+            </p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className={dark ? 'bg-neutral-900 text-neutral-400' : 'bg-neutral-50 text-neutral-600'}>
+                <tr>
+                  <th className="px-4 py-2 text-left font-semibold">Card</th>
+                  <th className="px-4 py-2 text-left font-semibold">Item</th>
+                  <th className="px-4 py-2 text-left font-semibold">Checklist</th>
+                  <th className="px-4 py-2 text-left font-semibold">Responsável</th>
+                  <th className="px-4 py-2 text-left font-semibold">Vencimento atual</th>
+                  <th className="px-4 py-2 text-left font-semibold">Nova data</th>
+                  <th className="px-4 py-2 text-left font-semibold">Ação</th>
+                </tr>
+              </thead>
+              <tbody className={dark ? 'divide-y divide-neutral-800' : 'divide-y divide-neutral-200'}>
+                {items.map((item) => {
+                  const itemKey = getPendingItemKey(item);
+                  const rowIsUpdating = updatingItemKey === itemKey;
+
+                  return (
+                    <tr key={itemKey} className={dark ? 'hover:bg-neutral-900/50' : 'hover:bg-neutral-50'}>
+                      <td className={`px-4 py-2 align-top ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>{item.cardName}</td>
+                      <td className={`px-4 py-2 align-top ${dark ? 'text-neutral-100' : 'text-neutral-900'}`}>{item.name}</td>
+                      <td className={`px-4 py-2 align-top ${dark ? 'text-neutral-400' : 'text-neutral-600'}`}>{item.checklistName}</td>
+                      <td className={`px-4 py-2 align-top ${dark ? 'text-neutral-400' : 'text-neutral-600'}`}>{item.memberName || 'Sem responsável'}</td>
+                      <td className={`px-4 py-2 align-top ${dark ? 'text-neutral-400' : 'text-neutral-600'}`}>
+                        {item.due ? formatDateShort(item.due) : '-'}
+                      </td>
+                      <td className="px-4 py-2 align-top">
+                        <input
+                          type="date"
+                          value={rowDateInputs[itemKey] || ''}
+                          onChange={(event) => onRowDateChange(itemKey, event.target.value)}
+                          className={`px-2 py-1.5 rounded border text-xs ${
+                            dark
+                              ? 'border-neutral-700 bg-neutral-900 text-neutral-100'
+                              : 'border-neutral-300 bg-white text-neutral-900'
+                          }`}
+                        />
+                      </td>
+                      <td className="px-4 py-2 align-top">
+                        <button
+                          type="button"
+                          onClick={() => onUpdateItem(item)}
+                          disabled={rowIsUpdating || isBulkUpdating || !rowDateInputs[itemKey] || !item.cardId || !item.checkItemId}
+                          className="px-2.5 py-1.5 rounded text-[11px] font-bold uppercase tracking-widest text-white bg-red-600 hover:bg-red-500 disabled:opacity-50"
+                        >
+                          {rowIsUpdating ? 'Alterando...' : 'Alterar'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PendingChecklistSection = ({ groups, dark, onOpenTreatmentModal }) => {
   const total = groups.reduce((sum, g) => sum + g.items.length, 0);
 
   return (
     <section>
-      <SectionHeader icon={FiAlertCircle} label="Pendências do dia" count={total} dark={dark} />
+      <div className="flex items-center gap-2 mb-3">
+        <FiAlertCircle size={16} className="text-red-500 flex-shrink-0" />
+        <h2 className={`text-sm font-bold uppercase tracking-widest ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>
+          Pendências do dia
+        </h2>
+
+        <button
+          type="button"
+          onClick={onOpenTreatmentModal}
+          title="Tratar pendências"
+          disabled={total === 0}
+          className={`inline-flex items-center justify-center w-6 h-6 rounded border transition-colors ${
+            dark
+              ? 'border-neutral-700 text-neutral-400 hover:text-white hover:bg-neutral-800 disabled:opacity-40'
+              : 'border-neutral-300 text-neutral-600 hover:text-black hover:bg-neutral-100 disabled:opacity-40'
+          }`}
+        >
+          <FiEdit2 size={12} />
+        </button>
+
+        <span className={`ml-auto text-xs tabular-nums ${dark ? 'text-neutral-500' : 'text-neutral-500'}`}>
+          {total} {total === 1 ? 'item' : 'itens'}
+        </span>
+      </div>
+
       {groups.length === 0
         ? <EmptyState message="Nenhuma pendência para esta data." dark={dark} />
         : (
@@ -1075,6 +1274,8 @@ const processData = (actions, cardsWithChecklists, listsMap, selectedDate, filte
         }
 
         pendingMap[cardId].items.push({
+          cardId,
+          checkItemId: item.id,
           name: item.name ?? '',
           checklistName: checklist.name ?? '',
           due: item.due,
@@ -1091,13 +1292,27 @@ const processData = (actions, cardsWithChecklists, listsMap, selectedDate, filte
     filteredMemberIds.length === 0 || filteredMemberIds.includes(memberId)
   );
 
+  const shouldKeepPendingItem = (item, groupMemberIds = []) => {
+    if (filteredMemberIds.length === 0) return true;
+    if (item.memberId && filteredMemberIds.includes(item.memberId)) return true;
+    return groupMemberIds.some((memberId) => filteredMemberIds.includes(memberId));
+  };
+
   return {
     comments: comments.filter((comment) => filterByMember(comment.memberId)),
     completedCards: completedCards.filter((card) => filterByMember(card.memberId)),
     completedChecklistGroups: completedChecklistGroups
       .map((group) => ({ ...group, items: group.items.filter((item) => filterByMember(item.memberId)) }))
       .filter((group) => group.items.length > 0),
-    pendingGroups,
+    pendingGroups: pendingGroups
+      .map((group) => ({
+        ...group,
+        idMembers: filteredMemberIds.length === 0
+          ? group.idMembers
+          : (group.idMembers || []).filter((memberId) => filteredMemberIds.includes(memberId)),
+        items: group.items.filter((item) => shouldKeepPendingItem(item, group.idMembers || [])),
+      }))
+      .filter((group) => group.items.length > 0),
     allMemberIds: Array.from(allMemberIds),
   };
 };
@@ -1115,6 +1330,13 @@ const ResumePage = () => {
   const [error, setError] = useState(null);
   const [rawData, setRawData] = useState({ actions: [], members: [], cardsWithChecklists: [], lists: [] });
   const [selectedMemberIds, setSelectedMemberIds] = useState([]);
+  const [isPendingModalOpen, setIsPendingModalOpen] = useState(false);
+  const [bulkPendingDateInput, setBulkPendingDateInput] = useState(() => toInputValue(new Date()));
+  const [pendingItemDateInputs, setPendingItemDateInputs] = useState({});
+  const [updatingPendingItemKey, setUpdatingPendingItemKey] = useState('');
+  const [isUpdatingAllPending, setIsUpdatingAllPending] = useState(false);
+  const [pendingUpdateError, setPendingUpdateError] = useState('');
+  const [pendingUpdateSuccess, setPendingUpdateSuccess] = useState('');
   const dateInputRef = useRef(null);
 
   const loadData = useCallback(async (date) => {
@@ -1148,6 +1370,34 @@ const ResumePage = () => {
     [rawData.actions, rawData.cardsWithChecklists, listsMap, selectedDate, selectedMemberIds, rawData.members]
   );
 
+  const pendingItems = useMemo(
+    () => pendingGroups.flatMap((group) => group.items.map((item) => ({
+      ...item,
+      cardName: group.cardName,
+      cardLabels: group.cardLabels,
+    }))),
+    [pendingGroups]
+  );
+
+  useEffect(() => {
+    if (!isPendingModalOpen) return;
+
+    const todayInput = toInputValue(new Date());
+
+    setPendingItemDateInputs((prev) => {
+      const next = {};
+      pendingItems.forEach((item) => {
+        const key = getPendingItemKey(item);
+        next[key] = prev[key] || todayInput;
+      });
+      return next;
+    });
+
+    if (!bulkPendingDateInput) {
+      setBulkPendingDateInput(todayInput);
+    }
+  }, [isPendingModalOpen, pendingItems, bulkPendingDateInput]);
+
   const productivityStats = useMemo(
     () => buildProductivityStats(comments, completedCards, completedChecklistGroups, pendingGroups, rawData.members),
     [comments, completedCards, completedChecklistGroups, pendingGroups, rawData.members]
@@ -1166,7 +1416,15 @@ const ResumePage = () => {
   };
 
   const handleDateClick = () => {
-    setTimeout(() => dateInputRef.current?.showPicker?.(), 40);
+    const input = dateInputRef.current;
+    if (!input) return;
+
+    if (typeof input.showPicker === 'function') {
+      input.showPicker();
+      return;
+    }
+
+    input.click();
   };
 
   const handleDateChange = (event) => {
@@ -1178,7 +1436,6 @@ const ResumePage = () => {
   };
 
   const isToday = sameDay(selectedDate, new Date());
-  const isFuture = selectedDate > new Date();
 
   const selectedMembersLabel = selectedMemberIds.length === 0
     ? 'Todos os colaboradores'
@@ -1208,6 +1465,81 @@ const ResumePage = () => {
     printWindow.document.open();
     printWindow.document.write(html);
     printWindow.document.close();
+  };
+
+  const handleOpenPendingTreatmentModal = () => {
+    setPendingUpdateError('');
+    setPendingUpdateSuccess('');
+    setBulkPendingDateInput(toInputValue(new Date()));
+    setIsPendingModalOpen(true);
+  };
+
+  const handlePendingItemDateChange = (itemKey, value) => {
+    setPendingItemDateInputs((prev) => ({
+      ...prev,
+      [itemKey]: value,
+    }));
+  };
+
+  const handleUpdateSinglePendingItem = async (item) => {
+    const itemKey = getPendingItemKey(item);
+    const targetDate = pendingItemDateInputs[itemKey];
+
+    if (!targetDate) {
+      setPendingUpdateError('Selecione uma data para alterar a pendência.');
+      return;
+    }
+
+    if (!item.cardId || !item.checkItemId) {
+      setPendingUpdateError('Não foi possível identificar o item no Trello.');
+      return;
+    }
+
+    setPendingUpdateError('');
+    setPendingUpdateSuccess('');
+    setUpdatingPendingItemKey(itemKey);
+
+    try {
+      await resumoService.updateChecklistItemDueDate(item.cardId, item.checkItemId, toDueIsoFromInput(targetDate));
+      setPendingUpdateSuccess(`Pendência "${item.name}" atualizada com sucesso.`);
+      await loadData(selectedDate);
+    } catch (err) {
+      setPendingUpdateError(err.message || 'Erro ao atualizar pendência.');
+    } finally {
+      setUpdatingPendingItemKey('');
+    }
+  };
+
+  const handleUpdateAllPendingItems = async () => {
+    if (!bulkPendingDateInput) {
+      setPendingUpdateError('Selecione a data que será aplicada em todas as pendências.');
+      return;
+    }
+
+    const updatableItems = pendingItems.filter((item) => item.cardId && item.checkItemId);
+
+    if (updatableItems.length === 0) {
+      setPendingUpdateError('Nenhuma pendência válida para atualização.');
+      return;
+    }
+
+    setPendingUpdateError('');
+    setPendingUpdateSuccess('');
+    setIsUpdatingAllPending(true);
+
+    try {
+      const targetDueIso = toDueIsoFromInput(bulkPendingDateInput);
+      await Promise.all(
+        updatableItems.map((item) => resumoService.updateChecklistItemDueDate(item.cardId, item.checkItemId, targetDueIso))
+      );
+
+      setPendingUpdateSuccess(`${updatableItems.length} pendência(s) atualizada(s) com sucesso.`);
+      await loadData(selectedDate);
+    } catch (err) {
+      setPendingUpdateError(err.message || 'Erro ao atualizar pendências.');
+    } finally {
+      setIsUpdatingAllPending(false);
+    }
   };
 
   const controlButtonClass = dark
@@ -1283,7 +1615,7 @@ const ResumePage = () => {
             type="date"
             value={toInputValue(selectedDate)}
             onChange={handleDateChange}
-            className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+            className="absolute inset-0 opacity-0 w-full h-full pointer-events-none"
             style={{ colorScheme: dark ? 'dark' : 'light' }}
           />
         </div>
@@ -1297,7 +1629,7 @@ const ResumePage = () => {
         </button>
       </div>
 
-      {!isLoading && !error && !isFuture && (
+      {!isLoading && !error && (
         <ProductivityPanel stats={productivityStats} dark={dark} />
       )}
 
@@ -1313,10 +1645,6 @@ const ResumePage = () => {
           <p className="text-red-500 text-xs font-bold uppercase tracking-widest mb-2">Erro ao carregar dados</p>
           <p className={dark ? 'text-neutral-400 text-sm' : 'text-neutral-600 text-sm'}>{error}</p>
         </div>
-      ) : isFuture ? (
-        <div className="text-center py-20">
-          <p className={dark ? 'text-neutral-600 text-sm' : 'text-neutral-500 text-sm'}>Nada a exibir para datas futuras.</p>
-        </div>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <div className="flex flex-col gap-6">
@@ -1326,10 +1654,31 @@ const ResumePage = () => {
 
           <div className="flex flex-col gap-6">
             <CompletedChecklistSection groups={completedChecklistGroups} dark={dark} />
-            <PendingChecklistSection groups={pendingGroups} dark={dark} />
+            <PendingChecklistSection
+              groups={pendingGroups}
+              dark={dark}
+              onOpenTreatmentModal={handleOpenPendingTreatmentModal}
+            />
           </div>
         </div>
       )}
+
+      <PendingTreatmentModal
+        open={isPendingModalOpen}
+        onClose={() => setIsPendingModalOpen(false)}
+        dark={dark}
+        items={pendingItems}
+        bulkDateInput={bulkPendingDateInput}
+        onBulkDateChange={setBulkPendingDateInput}
+        onUpdateAll={handleUpdateAllPendingItems}
+        isBulkUpdating={isUpdatingAllPending}
+        rowDateInputs={pendingItemDateInputs}
+        onRowDateChange={handlePendingItemDateChange}
+        onUpdateItem={handleUpdateSinglePendingItem}
+        updatingItemKey={updatingPendingItemKey}
+        error={pendingUpdateError}
+        success={pendingUpdateSuccess}
+      />
     </div>
   );
 };

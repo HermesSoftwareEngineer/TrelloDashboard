@@ -58,6 +58,11 @@ VITE_LANGSMITH_TIMEOUT_MS=2500
 VITE_PRODUCTIVITY_ANALYSIS_PASSWORD=sua_senha_de_autorizacao
 VITE_PRODUCTIVITY_AI_MAX_ACTIVITIES_PER_CALL=25
 VITE_PRODUCTIVITY_INSTRUCTION_PROMPT="Seja extremamente critica: so pontue quando houver evidencia explicita de que o colaborador executou a atividade. Nao suponha, nao infira e nao complete lacunas. Se a descricao estiver vaga, implicita ou sem prova de execucao, atribua 0 ponto e registre evidencia insuficiente. Para cada atividade use o formato: Acao | Evidencia literal | Regra (action_type => pontos) | Motivo. No summary, liste apenas atividades com evidencia clara e explique brevemente os casos com 0 ponto por falta de certeza."
+VITE_IMOVIEW_API_BASE_URL=https://api.imoview.com.br
+VITE_IMOVIEW_API_KEY=sua_chave_imoview
+VITE_IMOVIEW_USER_CODE=seu_codigo_usuario_imoview
+VITE_IMOVIEW_API_KEY_HEADER=chave
+VITE_IMOVIEW_USER_CODE_HEADER=codigoUsuario
 ```
 
 **Como obter:**
@@ -68,6 +73,8 @@ VITE_PRODUCTIVITY_INSTRUCTION_PROMPT="Seja extremamente critica: so pontue quand
 - Google AI API Key: Google AI Studio
 - LangSmith API Key: Settings > API Keys no LangSmith
 - Senha de autorização: valor definido por você no `.env`
+- Chave Imoview / Codigo de usuario: conforme credenciais do seu ambiente Imoview
+- No endpoint de locacao, `codigoCliente` (locador) e obtido automaticamente do campo personalizado `Cod. Locador` dos cards Trello
 
 ### 2.3 Lotes de atividades na análise de produtividade
 
