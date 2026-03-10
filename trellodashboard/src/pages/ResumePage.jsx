@@ -34,9 +34,21 @@ const toInputValue = (date) => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-const toDueIsoFromInput = (dateInputValue) => {
-  const [yyyy, mm, dd] = dateInputValue.split('-').map(Number);
-  const localDate = new Date(yyyy, mm - 1, dd, 12, 0, 0, 0);
+const toDateTimeLocalInput = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+};
+
+const toDueIsoFromInput = (dateTimeInputValue) => {
+  const localDate = new Date(dateTimeInputValue);
+  if (Number.isNaN(localDate.getTime())) return null;
   return localDate.toISOString();
 };
 
@@ -53,6 +65,11 @@ const formatDateShort = (isoString) => {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = d.getFullYear();
   return `${dd}/${mm}/${yyyy}`;
+};
+
+const formatDateTimeShort = (isoString) => {
+  if (!isoString) return '';
+  return `${formatDateShort(isoString)} ${formatTime(isoString)}`;
 };
 
 const sameDay = (d1, d2) => (
@@ -921,10 +938,11 @@ const PendingTreatmentModal = ({
           <div className="flex flex-wrap items-end gap-3">
             <div>
               <label className={`block text-[10px] font-semibold uppercase tracking-widest mb-1 ${dark ? 'text-neutral-500' : 'text-neutral-500'}`}>
-                Nova data (todas)
+                Nova data e hora (todas)
               </label>
               <input
-                type="date"
+                type="datetime-local"
+                step={60}
                 value={bulkDateInput}
                 onChange={(event) => onBulkDateChange(event.target.value)}
                 className={`px-3 py-2 rounded-lg border text-sm ${
@@ -967,7 +985,7 @@ const PendingTreatmentModal = ({
                   <th className="px-4 py-2 text-left font-semibold">Checklist</th>
                   <th className="px-4 py-2 text-left font-semibold">Responsável</th>
                   <th className="px-4 py-2 text-left font-semibold">Vencimento atual</th>
-                  <th className="px-4 py-2 text-left font-semibold">Nova data</th>
+                  <th className="px-4 py-2 text-left font-semibold">Nova data e hora</th>
                   <th className="px-4 py-2 text-left font-semibold">Ação</th>
                 </tr>
               </thead>
@@ -983,11 +1001,12 @@ const PendingTreatmentModal = ({
                       <td className={`px-4 py-2 align-top ${dark ? 'text-neutral-400' : 'text-neutral-600'}`}>{item.checklistName}</td>
                       <td className={`px-4 py-2 align-top ${dark ? 'text-neutral-400' : 'text-neutral-600'}`}>{item.memberName || 'Sem responsável'}</td>
                       <td className={`px-4 py-2 align-top ${dark ? 'text-neutral-400' : 'text-neutral-600'}`}>
-                        {item.due ? formatDateShort(item.due) : '-'}
+                        {item.due ? formatDateTimeShort(item.due) : '-'}
                       </td>
                       <td className="px-4 py-2 align-top">
                         <input
-                          type="date"
+                          type="datetime-local"
+                          step={60}
                           value={rowDateInputs[itemKey] || ''}
                           onChange={(event) => onRowDateChange(itemKey, event.target.value)}
                           className={`px-2 py-1.5 rounded border text-xs ${
@@ -1382,19 +1401,19 @@ const ResumePage = () => {
   useEffect(() => {
     if (!isPendingModalOpen) return;
 
-    const todayInput = toInputValue(new Date());
+    const nowInput = toDateTimeLocalInput(new Date());
 
     setPendingItemDateInputs((prev) => {
       const next = {};
       pendingItems.forEach((item) => {
         const key = getPendingItemKey(item);
-        next[key] = prev[key] || todayInput;
+        next[key] = prev[key] || toDateTimeLocalInput(item.due) || nowInput;
       });
       return next;
     });
 
     if (!bulkPendingDateInput) {
-      setBulkPendingDateInput(todayInput);
+      setBulkPendingDateInput(nowInput);
     }
   }, [isPendingModalOpen, pendingItems, bulkPendingDateInput]);
 
@@ -1470,7 +1489,7 @@ const ResumePage = () => {
   const handleOpenPendingTreatmentModal = () => {
     setPendingUpdateError('');
     setPendingUpdateSuccess('');
-    setBulkPendingDateInput(toInputValue(new Date()));
+    setBulkPendingDateInput(toDateTimeLocalInput(new Date()));
     setIsPendingModalOpen(true);
   };
 
@@ -1486,7 +1505,7 @@ const ResumePage = () => {
     const targetDate = pendingItemDateInputs[itemKey];
 
     if (!targetDate) {
-      setPendingUpdateError('Selecione uma data para alterar a pendência.');
+      setPendingUpdateError('Selecione data e horário para alterar a pendência.');
       return;
     }
 
@@ -1500,7 +1519,13 @@ const ResumePage = () => {
     setUpdatingPendingItemKey(itemKey);
 
     try {
-      await resumoService.updateChecklistItemDueDate(item.cardId, item.checkItemId, toDueIsoFromInput(targetDate));
+      const dueIso = toDueIsoFromInput(targetDate);
+      if (!dueIso) {
+        setPendingUpdateError('Data e horário inválidos para atualização da pendência.');
+        return;
+      }
+
+      await resumoService.updateChecklistItemDueDate(item.cardId, item.checkItemId, dueIso);
       setPendingUpdateSuccess(`Pendência "${item.name}" atualizada com sucesso.`);
       await loadData(selectedDate);
     } catch (err) {
@@ -1512,7 +1537,7 @@ const ResumePage = () => {
 
   const handleUpdateAllPendingItems = async () => {
     if (!bulkPendingDateInput) {
-      setPendingUpdateError('Selecione a data que será aplicada em todas as pendências.');
+      setPendingUpdateError('Selecione data e horário que serão aplicados em todas as pendências.');
       return;
     }
 
@@ -1529,6 +1554,11 @@ const ResumePage = () => {
 
     try {
       const targetDueIso = toDueIsoFromInput(bulkPendingDateInput);
+      if (!targetDueIso) {
+        setPendingUpdateError('Data e horário inválidos para atualização em massa.');
+        return;
+      }
+
       await Promise.all(
         updatableItems.map((item) => resumoService.updateChecklistItemDueDate(item.cardId, item.checkItemId, targetDueIso))
       );
