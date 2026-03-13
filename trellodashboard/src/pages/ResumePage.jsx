@@ -623,10 +623,10 @@ const buildProductivityStats = (comments, completedCards, completedChecklistGrou
     g.items.forEach((item) => { if (item.memberId) { ensure(item.memberId); statsMap[item.memberId].completed += 1; } });
   });
   pendingGroups.forEach((g) => {
-    const memberIds = g.idMembers ?? [];
-    memberIds.forEach((mid) => {
-      ensure(mid);
-      statsMap[mid].pending += g.items.length;
+    g.items.forEach((item) => {
+      if (!item.memberId) return;
+      ensure(item.memberId);
+      statsMap[item.memberId].pending += 1;
     });
   });
 
@@ -1311,11 +1311,9 @@ const processData = (actions, cardsWithChecklists, listsMap, selectedDate, filte
     filteredMemberIds.length === 0 || filteredMemberIds.includes(memberId)
   );
 
-  const shouldKeepPendingItem = (item, groupMemberIds = []) => {
-    if (filteredMemberIds.length === 0) return true;
-    if (item.memberId && filteredMemberIds.includes(item.memberId)) return true;
-    return groupMemberIds.some((memberId) => filteredMemberIds.includes(memberId));
-  };
+  const shouldKeepPendingItem = (item) => (
+    filteredMemberIds.length === 0 || filteredMemberIds.includes(item.memberId)
+  );
 
   return {
     comments: comments.filter((comment) => filterByMember(comment.memberId)),
@@ -1326,10 +1324,7 @@ const processData = (actions, cardsWithChecklists, listsMap, selectedDate, filte
     pendingGroups: pendingGroups
       .map((group) => ({
         ...group,
-        idMembers: filteredMemberIds.length === 0
-          ? group.idMembers
-          : (group.idMembers || []).filter((memberId) => filteredMemberIds.includes(memberId)),
-        items: group.items.filter((item) => shouldKeepPendingItem(item, group.idMembers || [])),
+        items: group.items.filter((item) => shouldKeepPendingItem(item)),
       }))
       .filter((group) => group.items.length > 0),
     allMemberIds: Array.from(allMemberIds),

@@ -15,10 +15,12 @@ import {
   FiX,
 } from 'react-icons/fi';
 import {
+  Area,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Legend,
   Line,
   LineChart,
@@ -30,26 +32,81 @@ import {
   YAxis,
 } from 'recharts';
 import productivityService from '../services/productivityService';
+import { useTheme } from '../contexts/ThemeContext';
 import {
   PRODUCTIVITY_PERIOD_OPTIONS,
   PRODUCTIVITY_PERIOD_TYPES,
   formatDatePTBR,
   getProductivityPeriodRange,
 } from '../utils/productivityPeriodUtils';
+import {
+  PRODUCTIVITY_SUMMARY_GRANULARITY,
+  PRODUCTIVITY_SUMMARY_GRANULARITY_OPTIONS,
+  buildProductivitySummarySeries,
+} from '../utils/productivitySummaryUtils';
 
 const CHART_COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4'];
 const ANALYSIS_AUTH_PASSWORD = import.meta.env.VITE_PRODUCTIVITY_ANALYSIS_PASSWORD;
 
-const tooltipStyle = {
-  backgroundColor: '#171717',
-  border: '1px solid #404040',
+const getTooltipStyle = (dark) => ({
+  backgroundColor: dark ? '#171717' : '#ffffff',
+  border: `1px solid ${dark ? '#272727' : '#e5e7eb'}`,
   borderRadius: '8px',
-  color: '#f5f5f5',
-};
+  color: dark ? '#f5f5f5' : '#171717',
+});
 
-const cardClass = 'rounded-2xl border border-neutral-800 bg-neutral-900/60 p-5';
+const getCardClass = (dark) => `rounded-2xl border p-5 ${
+  dark ? 'border-neutral-800 bg-neutral-900/60' : 'border-neutral-200 bg-white shadow-sm'
+}`;
+
+const getSummaryChartCardClass = (dark) => `rounded-2xl border p-6 ${
+  dark ? 'border-[#272727] bg-[#0c0c0c]' : 'border-neutral-200 bg-white shadow-sm'
+}`;
+
+const getSummaryStatCardClass = (dark) => `p-3 rounded-lg ${dark ? 'bg-neutral-900' : 'bg-neutral-50'}`;
+
+const getChartTheme = (dark) => ({
+  grid: dark ? '#1a1a1a' : '#e5e7eb',
+  axis: dark ? '#737373' : '#6b7280',
+  legend: dark ? '#a3a3a3' : '#525252',
+  dotStroke: dark ? '#0a0a0a' : '#ffffff',
+});
 
 const formatPoints = (value) => `${Number(value || 0).toFixed(0)} pts`;
+
+const formatCount = (value, label) => `${Number(value || 0)} ${label}`;
+
+const getChartGradientId = (prefix, value) => {
+  const normalized = String(value || 'series').replace(/[^a-zA-Z0-9_-]/g, '_');
+  return `${prefix}_${normalized}`;
+};
+
+const getMetricTotalFromSeries = (data, collaborators) => data.reduce(
+  (total, row) => total + collaborators.reduce((rowTotal, collaborator) => rowTotal + Number(row[collaborator.id] || 0), 0),
+  0,
+);
+
+const getActiveCollaboratorCount = (data, collaborators) => collaborators.filter((collaborator) => (
+  data.some((row) => Number(row[collaborator.id] || 0) > 0)
+)).length;
+
+const getPeakBucket = (data, collaborators) => {
+  let peakLabel = '-';
+  let peakValue = 0;
+
+  data.forEach((row) => {
+    const rowTotal = collaborators.reduce((total, collaborator) => total + Number(row[collaborator.id] || 0), 0);
+    if (rowTotal > peakValue) {
+      peakValue = rowTotal;
+      peakLabel = row.tooltip_label || row.bucket_label || '-';
+    }
+  });
+
+  return {
+    label: peakLabel,
+    value: peakValue,
+  };
+};
 
 const createLocalRowKey = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -227,6 +284,7 @@ const ActivityHistoryModal = ({
   isLoading,
   error,
   onClose,
+  dark,
 }) => {
   const [sortConfig, setSortConfig] = useState({ column: 'points', direction: 'desc' });
   const [wrappedCells, setWrappedCells] = useState({});
@@ -312,94 +370,101 @@ const ActivityHistoryModal = ({
     return 'whitespace-nowrap overflow-hidden text-ellipsis';
   };
 
+  const tooltipStyle = getTooltipStyle(dark);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}
       onClick={(event) => event.target === event.currentTarget && onClose()}
     >
-      <div className="w-full max-w-5xl max-h-[88vh] rounded-2xl border border-neutral-800 bg-neutral-900 shadow-2xl flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800">
+      <div className={`w-full max-w-5xl max-h-[88vh] rounded-2xl border shadow-2xl flex flex-col ${
+        dark ? 'border-neutral-800 bg-neutral-900' : 'border-neutral-200 bg-white'
+      }`}>
+        <div className={`flex items-center justify-between px-6 py-4 border-b ${dark ? 'border-neutral-800' : 'border-neutral-200'}`}>
           <div>
-            <h2 className="text-lg font-bold text-white">{title}</h2>
-            <p className="text-xs text-neutral-500">Histórico das atividades usadas no cálculo da IA para esse indicador.</p>
+            <h2 className={`text-lg font-bold ${dark ? 'text-white' : 'text-neutral-900'}`}>{title}</h2>
+            <p className={`text-xs ${dark ? 'text-neutral-500' : 'text-neutral-500'}`}>Histórico das atividades usadas no cálculo da IA para esse indicador.</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg text-neutral-500 hover:text-white hover:bg-neutral-800">
+          <button
+            onClick={onClose}
+            className={`p-2 rounded-lg ${dark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'}`}
+          >
             <FiX size={16} />
           </button>
         </div>
 
         <div className="px-6 py-5 overflow-y-auto">
           {isLoading ? (
-            <div className="py-16 flex items-center justify-center gap-2 text-neutral-400">
+            <div className={`py-16 flex items-center justify-center gap-2 ${dark ? 'text-neutral-400' : 'text-neutral-500'}`}>
               <FiLoader className="animate-spin" />
               <span>Carregando histórico do indicador...</span>
             </div>
           ) : error ? (
             <p className="text-sm text-red-400">{error}</p>
           ) : rows.length === 0 ? (
-            <p className="text-sm text-neutral-400">Nenhuma atividade encontrada para este recorte.</p>
+            <p className={`text-sm ${dark ? 'text-neutral-400' : 'text-neutral-500'}`}>Nenhuma atividade encontrada para este recorte.</p>
           ) : (
-              <div className="rounded-xl overflow-hidden border border-neutral-800 overflow-x-auto">
-                <div className="grid grid-cols-[220px_minmax(0,1fr)_160px] bg-neutral-950 px-4 py-3 text-xs uppercase tracking-widest font-bold text-neutral-500 min-w-[760px]">
-                <button onClick={() => toggleSort('type')} className="flex items-center gap-1 hover:text-white text-left">
+            <div className={`rounded-xl overflow-hidden border overflow-x-auto ${dark ? 'border-neutral-800' : 'border-neutral-200'}`}>
+              <div className={`grid grid-cols-[220px_minmax(0,1fr)_160px] px-4 py-3 text-xs uppercase tracking-widest font-bold min-w-[760px] ${dark ? 'bg-neutral-950 text-neutral-500' : 'bg-neutral-50 text-neutral-600'}`}>
+                <button onClick={() => toggleSort('type')} className={`flex items-center gap-1 text-left ${dark ? 'hover:text-white' : 'hover:text-neutral-900'}`}>
                   Tipo de atividade {renderSortIndicator('type')}
                 </button>
-                <button onClick={() => toggleSort('ai_reason')} className="flex items-center gap-1 hover:text-white text-left">
-                    Atividade e comentário da IA {renderSortIndicator('ai_reason')}
+                <button onClick={() => toggleSort('ai_reason')} className={`flex items-center gap-1 text-left ${dark ? 'hover:text-white' : 'hover:text-neutral-900'}`}>
+                  Atividade e comentário da IA {renderSortIndicator('ai_reason')}
                 </button>
-                  <button onClick={() => toggleSort('points')} className="w-[160px] min-w-[160px] max-w-[160px] justify-self-end flex items-center justify-end gap-1 hover:text-white text-right">
+                <button onClick={() => toggleSort('points')} className={`w-[160px] min-w-[160px] max-w-[160px] justify-self-end flex items-center justify-end gap-1 text-right ${dark ? 'hover:text-white' : 'hover:text-neutral-900'}`}>
                   Pontuação atribuída {renderSortIndicator('points')}
                 </button>
               </div>
 
               {sortedRows.map((row) => (
-                  <div key={row.id} className="grid grid-cols-[220px_minmax(0,1fr)_160px] px-4 py-3 border-t border-neutral-800 gap-3 items-start min-w-[760px]">
+                <div key={row.id} className={`grid grid-cols-[220px_minmax(0,1fr)_160px] px-4 py-3 gap-3 items-start min-w-[760px] border-t ${dark ? 'border-neutral-800' : 'border-neutral-200'}`}>
                   <div>
-                    <p className="text-sm text-neutral-100">{ACTIVITY_TYPE_LABELS[row.type] || row.type || 'Não informado'}</p>
-                    <p className="text-xs text-neutral-500 mt-1">{formatDatePTBR(row.date)}</p>
+                    <p className={`text-sm ${dark ? 'text-neutral-100' : 'text-neutral-900'}`}>{ACTIVITY_TYPE_LABELS[row.type] || row.type || 'Não informado'}</p>
+                    <p className={`text-xs mt-1 ${dark ? 'text-neutral-500' : 'text-neutral-500'}`}>{formatDatePTBR(row.date)}</p>
                   </div>
 
-                    <div className="min-w-0 space-y-2">
-                      <div className="group relative rounded-md border border-neutral-800/80 bg-neutral-950/60 px-2.5 py-2 min-w-0">
-                        {shouldShowWrapToggle(row.type === 'comment' ? row.content : row.item_name) && (
-                          <button
-                            type="button"
-                            className="absolute top-1.5 right-1.5 p-1 rounded text-neutral-500 hover:text-white hover:bg-neutral-800 opacity-0 group-hover:opacity-80 transition-opacity"
-                            title="Quebrar linha nesta célula"
-                            onClick={() => toggleCellWrap(`activity_${row.id}`)}
-                          >
-                            <FiAlignLeft size={12} />
-                          </button>
-                        )}
-                        <p className={`pr-7 text-sm text-neutral-200 ${getCellTextClassName(`activity_${row.id}`)}`}>
-                          {row.type === 'comment'
-                            ? (row.content || 'Comentário sem texto.')
-                            : (row.item_name || 'Item de checklist sem descrição.')}
-                        </p>
-                      </div>
-
-                      <div className="group relative rounded-md border border-neutral-800/80 bg-neutral-950/60 px-2.5 py-2 min-w-0">
+                  <div className="min-w-0 space-y-2">
+                    <div className={`group relative rounded-md border px-2.5 py-2 min-w-0 ${dark ? 'border-neutral-800/80 bg-neutral-950/60' : 'border-neutral-200 bg-neutral-50'}`}>
+                      {shouldShowWrapToggle(row.type === 'comment' ? row.content : row.item_name) && (
                         <button
                           type="button"
-                          className="absolute top-1.5 right-1.5 p-1 rounded text-neutral-500 hover:text-white hover:bg-neutral-800 opacity-0 group-hover:opacity-80 transition-opacity"
+                          className={`absolute top-1.5 right-1.5 p-1 rounded opacity-0 group-hover:opacity-80 transition-opacity ${dark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200'}`}
                           title="Quebrar linha nesta célula"
-                          onClick={() => toggleCellWrap(`ai_${row.id}`)}
+                          onClick={() => toggleCellWrap(`activity_${row.id}`)}
                         >
                           <FiAlignLeft size={12} />
                         </button>
-                        <p className={`pr-7 text-sm text-neutral-200 ${getCellTextClassName(`ai_${row.id}`)}`}>
-                          {row.ai_reason || 'Sem comentário da IA para este item.'}
-                        </p>
-                      </div>
+                      )}
+                      <p className={`pr-7 text-sm ${dark ? 'text-neutral-200' : 'text-neutral-800'} ${getCellTextClassName(`activity_${row.id}`)}`}>
+                        {row.type === 'comment'
+                          ? (row.content || 'Comentário sem texto.')
+                          : (row.item_name || 'Item de checklist sem descrição.')}
+                      </p>
+                    </div>
 
-                      <p className="text-xs text-neutral-500 mt-1 whitespace-normal break-words leading-relaxed">
+                    <div className={`group relative rounded-md border px-2.5 py-2 min-w-0 ${dark ? 'border-neutral-800/80 bg-neutral-950/60' : 'border-neutral-200 bg-neutral-50'}`}>
+                      <button
+                        type="button"
+                        className={`absolute top-1.5 right-1.5 p-1 rounded opacity-0 group-hover:opacity-80 transition-opacity ${dark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200'}`}
+                        title="Quebrar linha nesta célula"
+                        onClick={() => toggleCellWrap(`ai_${row.id}`)}
+                      >
+                        <FiAlignLeft size={12} />
+                      </button>
+                      <p className={`pr-7 text-sm ${dark ? 'text-neutral-200' : 'text-neutral-800'} ${getCellTextClassName(`ai_${row.id}`)}`}>
+                        {row.ai_reason || 'Sem comentário da IA para este item.'}
+                      </p>
+                    </div>
+
+                    <p className={`text-xs mt-1 whitespace-normal break-words leading-relaxed ${dark ? 'text-neutral-500' : 'text-neutral-500'}`}>
                       {(row.card_name || 'Card sem nome')}
                       {row.collaborator_name ? ` · ${row.collaborator_name}` : ''}
                     </p>
                   </div>
 
-                    <div className="w-[160px] min-w-[160px] max-w-[160px] text-right justify-self-end">
+                  <div className="w-[160px] min-w-[160px] max-w-[160px] text-right justify-self-end">
                     <span className="text-sm font-bold text-red-400">{formatPoints(row.points)}</span>
                   </div>
                 </div>
@@ -412,7 +477,7 @@ const ActivityHistoryModal = ({
   );
 };
 
-const MemberFilter = ({ members, selectedIds, onChange }) => {
+const MemberFilter = ({ members, selectedIds, onChange, dark }) => {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef(null);
 
@@ -446,7 +511,11 @@ const MemberFilter = ({ members, selectedIds, onChange }) => {
     <div ref={wrapperRef} className="relative">
       <button
         onClick={() => setOpen((prev) => !prev)}
-        className="h-10 min-w-[240px] px-3 rounded-lg border border-neutral-700 bg-neutral-800 text-sm text-neutral-200 flex items-center justify-between gap-2 hover:bg-neutral-700/70"
+        className={`h-10 min-w-[240px] px-3 rounded-lg border text-sm flex items-center justify-between gap-2 ${
+          dark
+            ? 'border-neutral-700 bg-neutral-800 text-neutral-200 hover:bg-neutral-700/70'
+            : 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50'
+        }`}
       >
         <span className="flex items-center gap-2 truncate">
           <FiUsers size={14} />
@@ -456,10 +525,14 @@ const MemberFilter = ({ members, selectedIds, onChange }) => {
       </button>
 
       {open && (
-        <div className="absolute top-full mt-2 left-0 z-40 w-full rounded-lg border border-neutral-700 bg-neutral-900 shadow-xl">
+        <div className={`absolute top-full mt-2 left-0 z-40 w-full rounded-lg border shadow-xl ${
+          dark ? 'border-neutral-700 bg-neutral-900' : 'border-neutral-200 bg-white'
+        }`}>
           <div className="max-h-64 overflow-y-auto py-1">
             {members.map((member) => (
-              <label key={member.id} className="px-3 py-2 flex items-center gap-2 text-sm text-neutral-200 hover:bg-neutral-800 cursor-pointer">
+              <label key={member.id} className={`px-3 py-2 flex items-center gap-2 text-sm cursor-pointer ${
+                dark ? 'text-neutral-200 hover:bg-neutral-800' : 'text-neutral-700 hover:bg-neutral-50'
+              }`}>
                 <input
                   type="checkbox"
                   className="accent-red-600"
@@ -474,7 +547,11 @@ const MemberFilter = ({ members, selectedIds, onChange }) => {
           {selectedIds.length > 0 && (
             <button
               onClick={() => onChange([])}
-              className="w-full border-t border-neutral-700 px-3 py-2 text-xs uppercase tracking-widest text-neutral-400 hover:text-white"
+              className={`w-full border-t px-3 py-2 text-xs uppercase tracking-widest ${
+                dark
+                  ? 'border-neutral-700 text-neutral-400 hover:text-white'
+                  : 'border-neutral-200 text-neutral-500 hover:text-neutral-900'
+              }`}
             >
               Limpar seleção
             </button>
@@ -485,7 +562,7 @@ const MemberFilter = ({ members, selectedIds, onChange }) => {
   );
 };
 
-const PointsSettingsModal = ({ settings, onClose, onSave, isSaving }) => {
+const PointsSettingsModal = ({ settings, onClose, onSave, isSaving, dark }) => {
   const [draft, setDraft] = useState(() => settings.map((item) => ({
     ...item,
     _rowKey: item.id ? `db_${item.id}` : createLocalRowKey(),
@@ -571,36 +648,36 @@ const PointsSettingsModal = ({ settings, onClose, onSave, isSaving }) => {
       style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}
       onClick={(event) => event.target === event.currentTarget && onClose()}
     >
-      <div className="w-full max-w-2xl max-h-[85vh] rounded-2xl border border-neutral-800 bg-neutral-900 shadow-2xl flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800">
+      <div className={`w-full max-w-2xl max-h-[85vh] rounded-2xl border shadow-2xl flex flex-col ${dark ? 'border-neutral-800 bg-neutral-900' : 'border-neutral-200 bg-white'}`}>
+        <div className={`flex items-center justify-between px-6 py-4 border-b ${dark ? 'border-neutral-800' : 'border-neutral-200'}`}>
           <div>
-            <h2 className="text-lg font-bold text-white">Tabela de pontos</h2>
-            <p className="text-xs text-neutral-500">Defina quantos pontos cada tipo de atividade vale.</p>
+            <h2 className={`text-lg font-bold ${dark ? 'text-white' : 'text-neutral-900'}`}>Tabela de pontos</h2>
+            <p className={`text-xs ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>Defina quantos pontos cada tipo de atividade vale.</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg text-neutral-500 hover:text-white hover:bg-neutral-800">
+          <button onClick={onClose} className={`p-2 rounded-lg ${dark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'}`}>
             <FiX size={16} />
           </button>
         </div>
 
         <div className="px-6 py-5 overflow-y-auto">
-          <div className="rounded-xl overflow-hidden border border-neutral-800">
-            <div className="grid grid-cols-[1fr_120px_120px] bg-neutral-950 px-4 py-3 text-xs uppercase tracking-widest font-bold text-neutral-500">
+          <div className={`rounded-xl overflow-hidden border ${dark ? 'border-neutral-800' : 'border-neutral-200'}`}>
+            <div className={`grid grid-cols-[1fr_120px_120px] px-4 py-3 text-xs uppercase tracking-widest font-bold ${dark ? 'bg-neutral-950 text-neutral-500' : 'bg-neutral-50 text-neutral-600'}`}>
               <span>Ação</span>
               <span>Pontos</span>
               <span className="text-right pr-1">Ordem</span>
             </div>
             {draft.map((row, index) => (
-              <div key={row._rowKey} className="grid grid-cols-[1fr_120px_120px] px-4 py-3 border-t border-neutral-800 items-center gap-2">
+              <div key={row._rowKey} className={`grid grid-cols-[1fr_120px_120px] px-4 py-3 border-t items-center gap-2 ${dark ? 'border-neutral-800' : 'border-neutral-200'}`}>
                 <input
                   type="text"
-                  className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100"
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${dark ? 'border-neutral-700 bg-neutral-800 text-neutral-100' : 'border-neutral-300 bg-white text-neutral-900'}`}
                   placeholder="Nome da ação (ex: revisão final)"
                   value={row.action_type}
                   onChange={(event) => updateActionType(index, event.target.value)}
                 />
                 <input
                   type="number"
-                  className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100"
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${dark ? 'border-neutral-700 bg-neutral-800 text-neutral-100' : 'border-neutral-300 bg-white text-neutral-900'}`}
                   value={row.points}
                   onChange={(event) => updatePoints(index, event.target.value)}
                 />
@@ -608,7 +685,7 @@ const PointsSettingsModal = ({ settings, onClose, onSave, isSaving }) => {
                   <button
                     onClick={() => moveRow(index, index - 1)}
                     disabled={index === 0}
-                    className="p-2 rounded-lg text-neutral-500 hover:text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className={`p-2 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed ${dark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'}`}
                     title="Subir"
                   >
                     <FiChevronUp size={14} />
@@ -616,14 +693,14 @@ const PointsSettingsModal = ({ settings, onClose, onSave, isSaving }) => {
                   <button
                     onClick={() => moveRow(index, index + 1)}
                     disabled={index === draft.length - 1}
-                    className="p-2 rounded-lg text-neutral-500 hover:text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className={`p-2 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed ${dark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'}`}
                     title="Descer"
                   >
                     <FiChevronDown size={14} />
                   </button>
                   <button
                     onClick={() => removeRow(index)}
-                    className="p-2 rounded-lg text-neutral-500 hover:text-red-400 hover:bg-red-950/40"
+                    className={`p-2 rounded-lg text-neutral-500 hover:text-red-400 ${dark ? 'hover:bg-red-950/40' : 'hover:bg-red-50'}`}
                     title="Remover linha"
                   >
                     <FiX size={14} />
@@ -635,7 +712,7 @@ const PointsSettingsModal = ({ settings, onClose, onSave, isSaving }) => {
 
           <button
             onClick={addRow}
-            className="mt-3 px-3 py-2 text-xs rounded-lg border border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800"
+            className={`mt-3 px-3 py-2 text-xs rounded-lg border ${dark ? 'border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800' : 'border-neutral-300 text-neutral-700 hover:text-neutral-900 hover:bg-neutral-50'}`}
           >
             + Adicionar linha
           </button>
@@ -645,10 +722,10 @@ const PointsSettingsModal = ({ settings, onClose, onSave, isSaving }) => {
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-neutral-800 flex justify-end gap-2">
+        <div className={`px-6 py-4 border-t flex justify-end gap-2 ${dark ? 'border-neutral-800' : 'border-neutral-200'}`}>
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg border border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800"
+            className={`px-4 py-2 text-sm rounded-lg border ${dark ? 'border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800' : 'border-neutral-300 text-neutral-700 hover:text-neutral-900 hover:bg-neutral-50'}`}
           >
             Cancelar
           </button>
@@ -673,19 +750,20 @@ const AuthorizationModal = ({
   onConfirm,
   error,
   isSubmitting,
+  dark,
 }) => (
   <div
     className="fixed inset-0 z-50 flex items-center justify-center p-4"
     style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}
     onClick={(event) => event.target === event.currentTarget && onClose()}
   >
-    <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-900 shadow-2xl">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800">
+    <div className={`w-full max-w-md rounded-2xl border shadow-2xl ${dark ? 'border-neutral-800 bg-neutral-900' : 'border-neutral-200 bg-white'}`}>
+      <div className={`flex items-center justify-between px-6 py-4 border-b ${dark ? 'border-neutral-800' : 'border-neutral-200'}`}>
         <div>
-          <h2 className="text-lg font-bold text-white">Autorização</h2>
-          <p className="text-xs text-neutral-500">Informe a senha para liberar o uso da IA.</p>
+          <h2 className={`text-lg font-bold ${dark ? 'text-white' : 'text-neutral-900'}`}>Autorização</h2>
+          <p className={`text-xs ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>Informe a senha para liberar o uso da IA.</p>
         </div>
-        <button onClick={onClose} className="p-2 rounded-lg text-neutral-500 hover:text-white hover:bg-neutral-800">
+        <button onClick={onClose} className={`p-2 rounded-lg ${dark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'}`}>
           <FiX size={16} />
         </button>
       </div>
@@ -697,12 +775,12 @@ const AuthorizationModal = ({
         }}
         className="px-6 py-5"
       >
-        <label className="block text-xs uppercase tracking-widest font-bold text-neutral-500 mb-2">Senha</label>
+        <label className={`block text-xs uppercase tracking-widest font-bold mb-2 ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>Senha</label>
         <input
           type="password"
           value={password}
           onChange={(event) => onPasswordChange(event.target.value)}
-          className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100"
+          className={`w-full rounded-lg border px-3 py-2 text-sm ${dark ? 'border-neutral-700 bg-neutral-800 text-neutral-100' : 'border-neutral-300 bg-white text-neutral-900'}`}
           placeholder="Digite a senha"
           autoFocus
         />
@@ -713,7 +791,7 @@ const AuthorizationModal = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg border border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800"
+            className={`px-4 py-2 text-sm rounded-lg border ${dark ? 'border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800' : 'border-neutral-300 text-neutral-700 hover:text-neutral-900 hover:bg-neutral-50'}`}
           >
             Cancelar
           </button>
@@ -740,29 +818,30 @@ const UpdatePeriodModal = ({
   onClose,
   onConfirm,
   isSubmitting,
+  dark,
 }) => (
   <div
     className="fixed inset-0 z-50 flex items-center justify-center p-4"
     style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}
     onClick={(event) => event.target === event.currentTarget && onClose()}
   >
-    <div className="w-full max-w-lg rounded-2xl border border-neutral-800 bg-neutral-900 shadow-2xl">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800">
+    <div className={`w-full max-w-lg rounded-2xl border shadow-2xl ${dark ? 'border-neutral-800 bg-neutral-900' : 'border-neutral-200 bg-white'}`}>
+      <div className={`flex items-center justify-between px-6 py-4 border-b ${dark ? 'border-neutral-800' : 'border-neutral-200'}`}>
         <div>
-          <h2 className="text-lg font-bold text-white">Atualizar período</h2>
-          <p className="text-xs text-neutral-500">Selecione o período que será processado pela IA.</p>
+          <h2 className={`text-lg font-bold ${dark ? 'text-white' : 'text-neutral-900'}`}>Atualizar período</h2>
+          <p className={`text-xs ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>Selecione o período que será processado pela IA.</p>
         </div>
-        <button onClick={onClose} className="p-2 rounded-lg text-neutral-500 hover:text-white hover:bg-neutral-800">
+        <button onClick={onClose} className={`p-2 rounded-lg ${dark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'}`}>
           <FiX size={16} />
         </button>
       </div>
 
       <div className="px-6 py-5">
-        <label className="block text-xs uppercase tracking-widest font-bold text-neutral-500 mb-2">Período</label>
+        <label className={`block text-xs uppercase tracking-widest font-bold mb-2 ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>Período</label>
         <select
           value={periodType}
           onChange={(event) => onPeriodTypeChange(event.target.value)}
-          className="h-10 w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 text-sm text-neutral-100"
+          className={`h-10 w-full rounded-lg border px-3 text-sm ${dark ? 'border-neutral-700 bg-neutral-800 text-neutral-100' : 'border-neutral-300 bg-white text-neutral-900'}`}
         >
           {PRODUCTIVITY_PERIOD_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
@@ -772,29 +851,29 @@ const UpdatePeriodModal = ({
         {periodType === PRODUCTIVITY_PERIOD_TYPES.CUSTOM && (
           <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs uppercase tracking-widest font-bold text-neutral-500 mb-1.5">Data inicial</label>
+              <label className={`block text-xs uppercase tracking-widest font-bold mb-1.5 ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>Data inicial</label>
               <input
                 type="date"
                 value={customRange.startDate}
                 onChange={(event) => onCustomRangeChange('startDate', event.target.value)}
-                className="h-10 w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 text-sm text-neutral-100"
+                className={`h-10 w-full rounded-lg border px-3 text-sm ${dark ? 'border-neutral-700 bg-neutral-800 text-neutral-100' : 'border-neutral-300 bg-white text-neutral-900'}`}
               />
             </div>
             <div>
-              <label className="block text-xs uppercase tracking-widest font-bold text-neutral-500 mb-1.5">Data final</label>
+              <label className={`block text-xs uppercase tracking-widest font-bold mb-1.5 ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>Data final</label>
               <input
                 type="date"
                 value={customRange.endDate}
                 onChange={(event) => onCustomRangeChange('endDate', event.target.value)}
-                className="h-10 w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 text-sm text-neutral-100"
+                className={`h-10 w-full rounded-lg border px-3 text-sm ${dark ? 'border-neutral-700 bg-neutral-800 text-neutral-100' : 'border-neutral-300 bg-white text-neutral-900'}`}
               />
             </div>
           </div>
         )}
 
         {isRangeValid ? (
-          <p className="mt-3 text-sm text-neutral-300">
-            Período selecionado: <span className="text-white">{formatDatePTBR(range.startDate)} até {formatDatePTBR(range.endDate)}</span>
+          <p className={`mt-3 text-sm ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>
+            Período selecionado: <span className={dark ? 'text-white' : 'text-neutral-900'}>{formatDatePTBR(range.startDate)} até {formatDatePTBR(range.endDate)}</span>
           </p>
         ) : (
           <p className="mt-3 text-sm text-red-400">Informe uma data inicial e final válidas.</p>
@@ -803,7 +882,7 @@ const UpdatePeriodModal = ({
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg border border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800"
+            className={`px-4 py-2 text-sm rounded-lg border ${dark ? 'border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800' : 'border-neutral-300 text-neutral-700 hover:text-neutral-900 hover:bg-neutral-50'}`}
           >
             Cancelar
           </button>
@@ -821,9 +900,217 @@ const UpdatePeriodModal = ({
   </div>
 );
 
+const SummaryTrendChartCard = ({
+  title,
+  description,
+  data,
+  collaborators,
+  hasData,
+  unitLabel,
+  dark,
+}) => {
+  const total = getMetricTotalFromSeries(data, collaborators);
+  const activeCollaborators = getActiveCollaboratorCount(data, collaborators);
+  const peakBucket = getPeakBucket(data, collaborators);
+  const tooltipStyle = getTooltipStyle(dark);
+  const summaryChartCardClass = getSummaryChartCardClass(dark);
+  const summaryStatCardClass = getSummaryStatCardClass(dark);
+  const chartTheme = getChartTheme(dark);
+
+  return (
+    <div className={summaryChartCardClass}>
+      <div className="mb-4">
+        <h3 className={`text-xs font-bold uppercase tracking-widest ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>{title}</h3>
+        <p className={`text-xs mt-1 ${dark ? 'text-neutral-600' : 'text-neutral-500'}`}>{description}</p>
+      </div>
+
+      {!hasData || collaborators.length === 0 ? (
+        <div className="h-96 flex items-center justify-center text-center px-6">
+          <p className={`text-sm ${dark ? 'text-neutral-500' : 'text-neutral-500'}`}>Nenhum dado encontrado para esse recorte.</p>
+        </div>
+      ) : (
+        <>
+          <div className="h-96">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <defs>
+                  {collaborators.map((collaborator, index) => {
+                    const color = CHART_COLORS[index % CHART_COLORS.length];
+                    const gradientId = getChartGradientId('summary_line', collaborator.id);
+                    return (
+                      <linearGradient key={gradientId} id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={color} stopOpacity={0.24} />
+                        <stop offset="55%" stopColor={color} stopOpacity={0.1} />
+                        <stop offset="100%" stopColor={color} stopOpacity={0} />
+                      </linearGradient>
+                    );
+                  })}
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
+                <XAxis dataKey="bucket_label" stroke={chartTheme.axis} tick={{ fontSize: 10 }} />
+                <YAxis stroke={chartTheme.axis} allowDecimals={false} tick={{ fontSize: 10 }} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  formatter={(value) => formatCount(value, unitLabel)}
+                  labelFormatter={(label, payload) => payload?.[0]?.payload?.tooltip_label || label}
+                />
+                <Legend
+                  verticalAlign="top"
+                  align="right"
+                  iconType="circle"
+                  wrapperStyle={{ paddingBottom: 16, fontSize: '11px', color: chartTheme.legend }}
+                />
+                {collaborators.map((collaborator, index) => {
+                  const color = CHART_COLORS[index % CHART_COLORS.length];
+                  const gradientId = getChartGradientId('summary_line', collaborator.id);
+                  return (
+                    <>
+                      <Area
+                        key={`${collaborator.id}_area`}
+                        type="monotone"
+                        dataKey={collaborator.id}
+                        stroke="none"
+                        fill={`url(#${gradientId})`}
+                        fillOpacity={1}
+                        isAnimationActive={false}
+                        legendType="none"
+                      />
+                      <Line
+                        key={collaborator.id}
+                        type="monotone"
+                        dataKey={collaborator.id}
+                        name={collaborator.name}
+                        stroke={color}
+                        strokeWidth={2}
+                        dot={{ r: 4, fill: color, stroke: chartTheme.dotStroke, strokeWidth: 2 }}
+                        activeDot={{ r: 6, fill: color, stroke: chartTheme.dotStroke, strokeWidth: 2 }}
+                      />
+                    </>
+                  );
+                })}
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            <div className={summaryStatCardClass}>
+              <p className="text-xs text-neutral-500">Total no período</p>
+              <p className={`text-xl font-bold ${dark ? 'text-white' : 'text-neutral-900'}`}>{total}</p>
+            </div>
+            <div className={summaryStatCardClass}>
+              <p className="text-xs text-neutral-500">Colaboradores ativos</p>
+              <p className="text-xl font-bold text-blue-400">{activeCollaborators}</p>
+            </div>
+            <div className={summaryStatCardClass}>
+              <p className="text-xs text-neutral-500">Maior pico</p>
+              <p className="text-xl font-bold text-emerald-400">{peakBucket.value}</p>
+              <p className="text-[11px] mt-1 text-neutral-500">{peakBucket.label}</p>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+const SummaryCompletedPendingBarChartCard = ({ data, hasData, dark }) => {
+  const totals = data.reduce((accumulator, row) => ({
+    completed: accumulator.completed + Number(row.completed_count || 0),
+    pending: accumulator.pending + Number(row.pending_count || 0),
+  }), { completed: 0, pending: 0 });
+  const tooltipStyle = getTooltipStyle(dark);
+  const summaryChartCardClass = getSummaryChartCardClass(dark);
+  const summaryStatCardClass = getSummaryStatCardClass(dark);
+  const chartTheme = getChartTheme(dark);
+
+  const peakDay = data.reduce((best, row) => {
+    const combined = Number(row.completed_count || 0) + Number(row.pending_count || 0);
+    if (combined > best.value) {
+      return {
+        value: combined,
+        label: row.tooltip_label || row.date_label || '-',
+      };
+    }
+    return best;
+  }, { value: 0, label: '-' });
+
+  return (
+    <div className={summaryChartCardClass}>
+      <div className="mb-4">
+        <h3 className={`text-xs font-bold uppercase tracking-widest ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>Concluídos x pendentes no decorrer dos dias</h3>
+        <p className={`text-xs mt-1 ${dark ? 'text-neutral-600' : 'text-neutral-500'}`}>
+          Comparativo diário consolidado entre itens concluídos e pendências para o filtro atual.
+        </p>
+      </div>
+
+      {!hasData ? (
+        <div className="h-96 flex items-center justify-center text-center px-6">
+          <p className={`text-sm ${dark ? 'text-neutral-500' : 'text-neutral-500'}`}>Nenhum dado diário encontrado para esse recorte.</p>
+        </div>
+      ) : (
+        <>
+          <div className="h-96">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="summary_bar_completed" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.95} />
+                    <stop offset="100%" stopColor="#10b981" stopOpacity={0.2} />
+                  </linearGradient>
+                  <linearGradient id="summary_bar_pending" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.95} />
+                    <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.2} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
+                <XAxis dataKey="date_label" stroke={chartTheme.axis} tick={{ fontSize: 10 }} />
+                <YAxis stroke={chartTheme.axis} allowDecimals={false} tick={{ fontSize: 10 }} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  formatter={(value) => formatCount(value, 'itens')}
+                  labelFormatter={(label, payload) => payload?.[0]?.payload?.tooltip_label || label}
+                />
+                <Legend
+                  verticalAlign="top"
+                  align="right"
+                  iconType="circle"
+                  wrapperStyle={{ paddingBottom: 16, fontSize: '11px', color: chartTheme.legend }}
+                />
+                <Bar dataKey="completed_count" name="Concluídos" fill="url(#summary_bar_completed)" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="pending_count" name="Pendentes" fill="url(#summary_bar_pending)" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            <div className={summaryStatCardClass}>
+              <p className="text-xs text-neutral-500">Total concluído</p>
+              <p className="text-xl font-bold text-emerald-400">{totals.completed}</p>
+            </div>
+            <div className={summaryStatCardClass}>
+              <p className="text-xs text-neutral-500">Total pendente</p>
+              <p className="text-xl font-bold text-amber-400">{totals.pending}</p>
+            </div>
+            <div className={summaryStatCardClass}>
+              <p className="text-xs text-neutral-500">Maior volume diário</p>
+              <p className="text-xl font-bold text-blue-400">{peakDay.value}</p>
+              <p className="text-[11px] mt-1 text-neutral-500">{peakDay.label}</p>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const ProductivityAnalysisPage = () => {
+  const { dark } = useTheme();
+  const tooltipStyle = getTooltipStyle(dark);
+  const cardClass = getCardClass(dark);
+  const chartTheme = getChartTheme(dark);
   const [periodType, setPeriodType] = useState(PRODUCTIVITY_PERIOD_TYPES.THIS_MONTH);
   const [selectedCollaboratorIds, setSelectedCollaboratorIds] = useState([]);
+  const [summaryGranularity, setSummaryGranularity] = useState(PRODUCTIVITY_SUMMARY_GRANULARITY.AUTO);
   const [updatePeriodType, setUpdatePeriodType] = useState(PRODUCTIVITY_PERIOD_TYPES.THIS_MONTH);
   const [customRange, setCustomRange] = useState({ startDate: '', endDate: '' });
   const [updateCustomRange, setUpdateCustomRange] = useState({ startDate: '', endDate: '' });
@@ -838,6 +1125,7 @@ const ProductivityAnalysisPage = () => {
 
   const [dailyData, setDailyData] = useState([]);
   const [topActivities, setTopActivities] = useState([]);
+  const [summaryRows, setSummaryRows] = useState([]);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [historyModalTitle, setHistoryModalTitle] = useState('');
   const [historyRows, setHistoryRows] = useState([]);
@@ -901,14 +1189,22 @@ const ProductivityAnalysisPage = () => {
   };
 
   const loadDashboardData = async (range = selectedRange, collaboratorIds = selectedCollaboratorIds) => {
-    const { dailyData: dailyRows, topActivities: topRows } = await productivityService.getProductivityDashboardData({
-      startDate: range.startDate,
-      endDate: range.endDate,
-      selectedCollaboratorIds: collaboratorIds,
-    });
+    const [{ dailyData: dailyRows, topActivities: topRows }, summaryTrendRows] = await Promise.all([
+      productivityService.getProductivityDashboardData({
+        startDate: range.startDate,
+        endDate: range.endDate,
+        selectedCollaboratorIds: collaboratorIds,
+      }),
+      productivityService.getProductivitySummaryData({
+        startDate: range.startDate,
+        endDate: range.endDate,
+        selectedCollaboratorIds: collaboratorIds,
+      }),
+    ]);
 
     setDailyData(dailyRows);
     setTopActivities(topRows);
+    setSummaryRows(summaryTrendRows);
   };
 
   useEffect(() => {
@@ -1142,6 +1438,60 @@ const ProductivityAnalysisPage = () => {
   const byCollaborator = useMemo(() => groupDataByCollaborator(dailyData), [dailyData]);
   const distributionData = useMemo(() => buildDistributionData(dailyData), [dailyData]);
 
+  const summarySeries = useMemo(() => {
+    if (!selectedRange) {
+      return {
+        resolvedGranularity: PRODUCTIVITY_SUMMARY_GRANULARITY.DAY,
+        collaborators: [],
+        completedLineData: [],
+        pendingLineData: [],
+        commentsLineData: [],
+        hasCompletedData: false,
+        hasPendingData: false,
+        hasCommentsData: false,
+      };
+    }
+
+    return buildProductivitySummarySeries({
+      summaryRows,
+      members,
+      startDate: selectedRange.startDate,
+      endDate: selectedRange.endDate,
+      granularity: summaryGranularity,
+    });
+  }, [summaryRows, members, selectedRange, summaryGranularity]);
+
+  const resolvedSummaryGranularityLabel = useMemo(() => (
+    PRODUCTIVITY_SUMMARY_GRANULARITY_OPTIONS.find((option) => option.value === summarySeries.resolvedGranularity)?.label || 'Por dia'
+  ), [summarySeries.resolvedGranularity]);
+
+  const completedPendingDailyBars = useMemo(() => {
+    const rowsByDate = new Map();
+
+    summaryRows.forEach((row) => {
+      if (!rowsByDate.has(row.date)) {
+        rowsByDate.set(row.date, {
+          date: row.date,
+          date_label: formatDatePTBR(row.date),
+          tooltip_label: formatDatePTBR(row.date),
+          completed_count: 0,
+          pending_count: 0,
+        });
+      }
+
+      const current = rowsByDate.get(row.date);
+      current.completed_count += Number(row.completed_count || 0);
+      current.pending_count += Number(row.pending_count || 0);
+    });
+
+    return Array.from(rowsByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }, [summaryRows]);
+
+  const hasCompletedPendingDailyBars = useMemo(
+    () => completedPendingDailyBars.some((row) => Number(row.completed_count || 0) > 0 || Number(row.pending_count || 0) > 0),
+    [completedPendingDailyBars]
+  );
+
   const collaboratorEvolution = useMemo(
     () => buildCollaboratorEvolution(dailyData, byCollaborator),
     [dailyData, byCollaborator]
@@ -1157,8 +1507,8 @@ const ProductivityAnalysisPage = () => {
   return (
     <div className="max-w-[1400px] mx-auto py-6 px-2">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold text-white">Análise de produtividade</h1>
-        <p className="text-sm text-neutral-500 mt-1">
+        <h1 className={`text-2xl font-bold ${dark ? 'text-white' : 'text-neutral-900'}`}>Análise de produtividade</h1>
+        <p className={`text-sm mt-1 ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>
           Avaliação de produtividade por IA com comentários e checklist concluído do Trello.
         </p>
       </header>
@@ -1166,11 +1516,11 @@ const ProductivityAnalysisPage = () => {
       <section className={`${cardClass} mb-6`}>
         <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr_auto] gap-3 items-end">
           <div>
-            <label className="text-[11px] uppercase tracking-widest font-bold text-neutral-500 block mb-1.5">Período</label>
+            <label className={`text-[11px] uppercase tracking-widest font-bold block mb-1.5 ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>Período</label>
             <select
               value={periodType}
               onChange={(event) => handleMainPeriodChange(event.target.value)}
-              className="h-10 w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 text-sm text-neutral-100"
+              className={`h-10 w-full rounded-lg border px-3 text-sm ${dark ? 'border-neutral-700 bg-neutral-800 text-neutral-100' : 'border-neutral-300 bg-white text-neutral-900'}`}
               disabled={controlsDisabled}
             >
               {PRODUCTIVITY_PERIOD_OPTIONS.map((option) => (
@@ -1184,14 +1534,14 @@ const ProductivityAnalysisPage = () => {
                   type="date"
                   value={customRange.startDate}
                   onChange={(event) => setCustomRange((previous) => ({ ...previous, startDate: event.target.value }))}
-                  className="h-10 w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 text-sm text-neutral-100"
+                  className={`h-10 w-full rounded-lg border px-3 text-sm ${dark ? 'border-neutral-700 bg-neutral-800 text-neutral-100' : 'border-neutral-300 bg-white text-neutral-900'}`}
                   disabled={controlsDisabled}
                 />
                 <input
                   type="date"
                   value={customRange.endDate}
                   onChange={(event) => setCustomRange((previous) => ({ ...previous, endDate: event.target.value }))}
-                  className="h-10 w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 text-sm text-neutral-100"
+                  className={`h-10 w-full rounded-lg border px-3 text-sm ${dark ? 'border-neutral-700 bg-neutral-800 text-neutral-100' : 'border-neutral-300 bg-white text-neutral-900'}`}
                   disabled={controlsDisabled}
                 />
               </div>
@@ -1199,17 +1549,18 @@ const ProductivityAnalysisPage = () => {
           </div>
 
           <div>
-            <label className="text-[11px] uppercase tracking-widest font-bold text-neutral-500 block mb-1.5">Colaboradores</label>
+            <label className={`text-[11px] uppercase tracking-widest font-bold block mb-1.5 ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>Colaboradores</label>
             <MemberFilter
               members={members}
               selectedIds={selectedCollaboratorIds}
               onChange={setSelectedCollaboratorIds}
+              dark={dark}
             />
           </div>
 
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="h-10 px-4 rounded-lg border border-neutral-700 bg-neutral-800 text-sm text-neutral-200 hover:bg-neutral-700/70 flex items-center justify-center gap-2"
+            className={`h-10 px-4 rounded-lg border text-sm flex items-center justify-center gap-2 ${dark ? 'border-neutral-700 bg-neutral-800 text-neutral-200 hover:bg-neutral-700/70' : 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50'}`}
             disabled={controlsDisabled}
           >
             <FiEdit2 size={14} />
@@ -1217,23 +1568,23 @@ const ProductivityAnalysisPage = () => {
           </button>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-neutral-400">
+        <div className={`mt-4 flex flex-wrap items-center gap-2 text-xs ${dark ? 'text-neutral-400' : 'text-neutral-600'}`}>
           {isMainRangeValid ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-neutral-700 bg-neutral-800">
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${dark ? 'border-neutral-700 bg-neutral-800' : 'border-neutral-200 bg-neutral-50'}`}>
               <FiCalendar size={12} />
               {formatDatePTBR(selectedRange.startDate)} até {formatDatePTBR(selectedRange.endDate)}
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-red-800/60 bg-red-950/30 text-red-300">
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${dark ? 'border-red-800/60 bg-red-950/30 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}>
               <FiCalendar size={12} />
               Período personalizado inválido
             </span>
           )}
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-neutral-700 bg-neutral-800">
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${dark ? 'border-neutral-700 bg-neutral-800' : 'border-neutral-200 bg-neutral-50'}`}>
             <FiDatabase size={12} />
             Dados exibidos sempre a partir do Supabase
           </span>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-neutral-700 bg-neutral-800">
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${dark ? 'border-neutral-700 bg-neutral-800' : 'border-neutral-200 bg-neutral-50'}`}>
             <FiBarChart2 size={12} />
             Total salvo: {formatPoints(totalPoints)}
           </span>
@@ -1252,7 +1603,7 @@ const ProductivityAnalysisPage = () => {
           <button
             onClick={() => selectedRange && loadDashboardData(selectedRange, selectedCollaboratorIds)}
             disabled={controlsDisabled || !isMainRangeValid}
-            className="px-4 h-10 rounded-lg border border-neutral-700 bg-neutral-800 text-neutral-200 text-xs font-bold uppercase tracking-widest hover:bg-neutral-700/70 disabled:opacity-60 flex items-center gap-2"
+            className={`px-4 h-10 rounded-lg border text-xs font-bold uppercase tracking-widest disabled:opacity-60 flex items-center gap-2 ${dark ? 'border-neutral-700 bg-neutral-800 text-neutral-200 hover:bg-neutral-700/70' : 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50'}`}
           >
             <FiRefreshCw size={14} />
             Recarregar do banco
@@ -1260,7 +1611,7 @@ const ProductivityAnalysisPage = () => {
         </div>
 
         {progress && (
-          <p className="mt-3 text-xs text-neutral-400">
+          <p className={`mt-3 text-xs ${dark ? 'text-neutral-400' : 'text-neutral-600'}`}>
             {getAnalysisProgressMessage(progress)}
           </p>
         )}
@@ -1275,25 +1626,100 @@ const ProductivityAnalysisPage = () => {
       </section>
 
       {isLoadingPage ? (
-        <div className="py-20 flex items-center justify-center gap-2 text-neutral-400">
+        <div className={`py-20 flex items-center justify-center gap-2 ${dark ? 'text-neutral-400' : 'text-neutral-600'}`}>
           <FiLoader className="animate-spin" />
           <span>Carregando dados de produtividade...</span>
         </div>
       ) : dailyData.length === 0 ? (
         <div className={`${cardClass} text-center py-16`}>
-          <p className="text-white font-medium">Nenhuma análise salva para o período selecionado.</p>
-          <p className="text-sm text-neutral-500 mt-2">Clique em “Analisar produtividade” para gerar e persistir os dados no Supabase.</p>
+          <p className={`font-medium ${dark ? 'text-white' : 'text-neutral-900'}`}>Nenhuma análise salva para o período selecionado.</p>
+          <p className={`text-sm mt-2 ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>Clique em “Analisar produtividade” para gerar e persistir os dados no Supabase.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-          <section className={cardClass}>
-            <h2 className="text-sm font-bold text-white mb-4">Pontuação no decorrer dos dias</h2>
+        <>
+          <section className={`${cardClass} mb-5`}>
+            <div className="flex flex-col lg:flex-row lg:items-end gap-3 mb-4">
+              <div>
+                <h2 className={`text-sm font-bold ${dark ? 'text-white' : 'text-neutral-900'}`}>Análise de resumo</h2>
+                <p className={`text-xs mt-1 ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>
+                  Séries por colaborador para itens concluídos, pendências e comentários. O filtro global de colaboradores é aplicado aqui também.
+                </p>
+              </div>
+
+              <div className="lg:ml-auto min-w-[220px]">
+                <label className={`text-[11px] uppercase tracking-widest font-bold block mb-1.5 ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>Granularidade</label>
+                <select
+                  value={summaryGranularity}
+                  onChange={(event) => setSummaryGranularity(event.target.value)}
+                  className={`h-10 w-full rounded-lg border px-3 text-sm ${dark ? 'border-neutral-700 bg-neutral-800 text-neutral-100' : 'border-neutral-300 bg-white text-neutral-900'}`}
+                >
+                  {PRODUCTIVITY_SUMMARY_GRANULARITY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className={`mb-4 flex flex-wrap items-center gap-2 text-xs ${dark ? 'text-neutral-400' : 'text-neutral-600'}`}>
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${dark ? 'border-neutral-700 bg-neutral-800' : 'border-neutral-200 bg-neutral-50'}`}>
+                <FiBarChart2 size={12} />
+                Granularidade ativa: {resolvedSummaryGranularityLabel}
+              </span>
+              {summaryGranularity === PRODUCTIVITY_SUMMARY_GRANULARITY.AUTO && (
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${dark ? 'border-neutral-700 bg-neutral-800' : 'border-neutral-200 bg-neutral-50'}`}>
+                  Ajuste automatico conforme o tamanho do periodo
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <SummaryCompletedPendingBarChartCard
+                data={completedPendingDailyBars}
+                hasData={hasCompletedPendingDailyBars}
+                dark={dark}
+              />
+
+              <SummaryTrendChartCard
+                title="Itens concluídos por colaborador"
+                description="Contagem de itens de checklist concluídos por colaborador ao longo do tempo." 
+                data={summarySeries.completedLineData}
+                collaborators={summarySeries.collaborators}
+                hasData={summarySeries.hasCompletedData}
+                unitLabel="itens"
+                dark={dark}
+              />
+
+              <SummaryTrendChartCard
+                title="Pendências por colaborador"
+                description="Itens pendentes são agrupados pela data de vencimento e pelo responsável do item." 
+                data={summarySeries.pendingLineData}
+                collaborators={summarySeries.collaborators}
+                hasData={summarySeries.hasPendingData}
+                unitLabel="itens"
+                dark={dark}
+              />
+
+              <SummaryTrendChartCard
+                title="Comentários por colaborador"
+                description="Contagem de comentários registrados por colaborador no mesmo recorte temporal." 
+                data={summarySeries.commentsLineData}
+                collaborators={summarySeries.collaborators}
+                hasData={summarySeries.hasCommentsData}
+                unitLabel="comentarios"
+                dark={dark}
+              />
+            </div>
+          </section>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            <section className={cardClass}>
+            <h2 className={`text-sm font-bold mb-4 ${dark ? 'text-white' : 'text-neutral-900'}`}>Pontuação no decorrer dos dias</h2>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={totalByDay} onClick={handleDailyChartClick}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" />
-                  <XAxis dataKey="date" tickFormatter={formatDatePTBR} stroke="#a3a3a3" />
-                  <YAxis stroke="#a3a3a3" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
+                  <XAxis dataKey="date" tickFormatter={formatDatePTBR} stroke={chartTheme.axis} />
+                  <YAxis stroke={chartTheme.axis} />
                   <Tooltip
                     formatter={(value) => formatPoints(value)}
                     labelFormatter={(label) => `Data: ${formatDatePTBR(label)}`}
@@ -1311,16 +1737,16 @@ const ProductivityAnalysisPage = () => {
                 </LineChart>
               </ResponsiveContainer>
             </div>
-          </section>
+            </section>
 
-          <section className={cardClass}>
-            <h2 className="text-sm font-bold text-white mb-4">Pontuação por colaborador</h2>
+            <section className={cardClass}>
+            <h2 className={`text-sm font-bold mb-4 ${dark ? 'text-white' : 'text-neutral-900'}`}>Pontuação por colaborador</h2>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={byCollaborator}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" />
-                  <XAxis dataKey="collaborator_name" stroke="#a3a3a3" />
-                  <YAxis stroke="#a3a3a3" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
+                  <XAxis dataKey="collaborator_name" stroke={chartTheme.axis} />
+                  <YAxis stroke={chartTheme.axis} />
                   <Tooltip formatter={(value) => formatPoints(value)} contentStyle={tooltipStyle} />
                   <Bar dataKey="points_total" radius={[8, 8, 0, 0]} cursor="pointer" onClick={handleCollaboratorBarClick}>
                     {byCollaborator.map((item, index) => (
@@ -1330,18 +1756,18 @@ const ProductivityAnalysisPage = () => {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </section>
+            </section>
 
-          <section className={cardClass}>
-            <h2 className="text-sm font-bold text-white mb-4">Evolução de produtividade por colaborador</h2>
+            <section className={cardClass}>
+            <h2 className={`text-sm font-bold mb-4 ${dark ? 'text-white' : 'text-neutral-900'}`}>Evolução de produtividade por colaborador</h2>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={collaboratorEvolution.lineData} onClick={handleEvolutionChartClick}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" />
-                  <XAxis dataKey="date_label" stroke="#a3a3a3" />
-                  <YAxis stroke="#a3a3a3" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
+                  <XAxis dataKey="date_label" stroke={chartTheme.axis} />
+                  <YAxis stroke={chartTheme.axis} />
                   <Tooltip contentStyle={tooltipStyle} formatter={(value) => formatPoints(value)} />
-                  <Legend />
+                  <Legend wrapperStyle={{ color: chartTheme.legend }} />
                   {collaboratorEvolution.collaborators.map((collaborator, index) => (
                     <Line
                       key={collaborator.id}
@@ -1358,10 +1784,10 @@ const ProductivityAnalysisPage = () => {
                 </LineChart>
               </ResponsiveContainer>
             </div>
-          </section>
+            </section>
 
-          <section className={cardClass}>
-            <h2 className="text-sm font-bold text-white mb-4">Distribuição de tipos de atividade</h2>
+            <section className={cardClass}>
+            <h2 className={`text-sm font-bold mb-4 ${dark ? 'text-white' : 'text-neutral-900'}`}>Distribuição de tipos de atividade</h2>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -1370,34 +1796,35 @@ const ProductivityAnalysisPage = () => {
                     <Cell fill="#f59e0b" />
                   </Pie>
                   <Tooltip formatter={(value) => formatPoints(value)} contentStyle={tooltipStyle} />
-                  <Legend />
+                  <Legend wrapperStyle={{ color: chartTheme.legend }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-          </section>
-        </div>
+            </section>
+          </div>
+        </>
       )}
 
       <section className={`${cardClass} mt-5`}>
-        <h2 className="text-sm font-bold text-white mb-3">Atividades com maior pontuação</h2>
+        <h2 className={`text-sm font-bold mb-3 ${dark ? 'text-white' : 'text-neutral-900'}`}>Atividades com maior pontuação</h2>
         {topActivities.length === 0 ? (
-          <p className="text-sm text-neutral-500">Nenhuma atividade registrada para o filtro atual.</p>
+          <p className={`text-sm ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>Nenhuma atividade registrada para o filtro atual.</p>
         ) : (
           <div className="space-y-2">
             {topActivities.map((activity) => (
-              <div key={activity.id} className="rounded-lg border border-neutral-800 bg-neutral-950/70 px-3 py-2">
+              <div key={activity.id} className={`rounded-lg border px-3 py-2 ${dark ? 'border-neutral-800 bg-neutral-950/70' : 'border-neutral-200 bg-neutral-50'}`}>
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm text-neutral-100 truncate">
+                  <p className={`text-sm truncate ${dark ? 'text-neutral-100' : 'text-neutral-900'}`}>
                     {activity.card_name || 'Card sem nome'}
                     {activity.item_name ? ` · ${activity.item_name}` : ''}
                   </p>
                   <span className="text-xs font-bold text-red-400">{formatPoints(activity.points)}</span>
                 </div>
-                <p className="text-xs text-neutral-500 mt-1">
+                <p className={`text-xs mt-1 ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>
                   {formatDatePTBR(activity.date)} · {activity.type === 'comment' ? 'Comentário' : 'Checklist'}
                 </p>
                 {(activity.content || activity.ai_reason) && (
-                  <p className="text-xs text-neutral-400 mt-1 line-clamp-2">
+                  <p className={`text-xs mt-1 line-clamp-2 ${dark ? 'text-neutral-400' : 'text-neutral-600'}`}>
                     {activity.ai_reason || activity.content}
                   </p>
                 )}
@@ -1413,6 +1840,7 @@ const ProductivityAnalysisPage = () => {
           onClose={() => setIsSettingsOpen(false)}
           onSave={handleSaveSettings}
           isSaving={isSavingSettings}
+          dark={dark}
         />
       )}
 
@@ -1428,6 +1856,7 @@ const ProductivityAnalysisPage = () => {
           onConfirm={handleAuthorizeAndContinue}
           error={authorizationError}
           isSubmitting={isAnalyzing}
+          dark={dark}
         />
       )}
 
@@ -1442,6 +1871,7 @@ const ProductivityAnalysisPage = () => {
           onClose={() => setIsUpdateModalOpen(false)}
           onConfirm={handleUpdateBySelectedPeriod}
           isSubmitting={isAnalyzing}
+          dark={dark}
         />
       )}
 
@@ -1456,6 +1886,7 @@ const ProductivityAnalysisPage = () => {
             setHistoryRows([]);
             setHistoryError('');
           }}
+          dark={dark}
         />
       )}
     </div>

@@ -100,6 +100,30 @@ export const getLists = async () => {
 };
 
 /**
+ * Fetch board actions within a date range.
+ * Returns commentCard and updateCheckItemStateOnCard actions.
+ * @param {string} startDateISO - start date as YYYY-MM-DD
+ * @param {string} endDateISO - end date as YYYY-MM-DD
+ */
+export const getActionsInRange = async (startDateISO, endDateISO) => {
+  const since = new Date(startDateISO);
+  since.setHours(0, 0, 0, 0);
+  const before = new Date(endDateISO);
+  before.setHours(23, 59, 59, 999);
+
+  const url = buildUrl(`/boards/${BOARD_ID}/actions`, {
+    filter: 'commentCard,updateCheckItemStateOnCard',
+    since: since.toISOString(),
+    before: before.toISOString(),
+    limit: 1000,
+    memberCreator: true,
+    memberCreator_fields: 'fullName,username,avatarUrl,id',
+  });
+
+  return fetchFromTrello(url);
+};
+
+/**
  * Main function: fetches all data needed for the Resumo page.
  * @param {Date} date - selected day
  */
@@ -116,6 +140,7 @@ export const getResumoDayData = async (date) => {
 
 export default {
   getActionsByDate,
+  getActionsInRange,
   getMembers,
   getCardsWithChecklists,
   getLists,

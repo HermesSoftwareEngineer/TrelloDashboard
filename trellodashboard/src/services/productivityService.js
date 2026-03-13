@@ -577,6 +577,90 @@ export const getProductivityDashboardData = async ({
   };
 };
 
+export const getProductivitySummaryData = async ({
+  startDate,
+  endDate,
+  selectedCollaboratorIds = [],
+}) => {
+  const startISO = toISODate(startDate);
+  const endISO = toISODate(endDate);
+  const selectedSet = new Set(selectedCollaboratorIds);
+
+  const [actions, cardsWithChecklists] = await Promise.all([
+    resumoService.getActionsInRange(startISO, endISO),
+    resumoService.getCardsWithChecklists(),
+  ]);
+
+  const summaryMap = new Map();
+
+  const ensureRow = (date, collaboratorId, collaboratorName = null) => {
+    const key = `${date}::${collaboratorId || 'unknown'}`;
+
+    if (!summaryMap.has(key)) {
+      summaryMap.set(key, {
+        date,
+        collaborator_id: collaboratorId,
+        collaborator_name: collaboratorName,
+        completed_count: 0,
+        pending_count: 0,
+        comment_count: 0,
+      });
+    }
+
+    const row = summaryMap.get(key);
+    if (!row.collaborator_name && collaboratorName) {
+      row.collaborator_name = collaboratorName;
+    }
+    return row;
+  };
+
+  (actions || []).forEach((action) => {
+    const collaboratorId = action.memberCreator?.id || null;
+    const collaboratorName = action.memberCreator?.fullName || action.memberCreator?.username || null;
+
+    if (selectedSet.size > 0 && (!collaboratorId || !selectedSet.has(collaboratorId))) return;
+
+    const date = toISODate(action.date);
+    if (date < startISO || date > endISO) return;
+
+    if (action.type === 'updateCheckItemStateOnCard') {
+      if (action.data?.checkItem?.state === 'complete') {
+        const row = ensureRow(date, collaboratorId, collaboratorName);
+        row.completed_count += 1;
+      }
+      return;
+    }
+
+    if (action.type === 'commentCard') {
+      const row = ensureRow(date, collaboratorId, collaboratorName);
+      row.comment_count += 1;
+    }
+  });
+
+  (cardsWithChecklists || []).forEach((card) => {
+    (card.checklists || []).forEach((checklist) => {
+      (checklist.checkItems || []).forEach((item) => {
+        if (!item?.due || item.state === 'complete') return;
+
+        const dueDate = toISODate(item.due);
+        if (dueDate < startISO || dueDate > endISO) return;
+
+        const collaboratorId = item.idMember || null;
+        if (selectedSet.size > 0 && (!collaboratorId || !selectedSet.has(collaboratorId))) return;
+
+        const row = ensureRow(dueDate, collaboratorId);
+        row.pending_count += 1;
+      });
+    });
+  });
+
+  return Array.from(summaryMap.values()).sort((a, b) => {
+    const dateCompare = a.date.localeCompare(b.date);
+    if (dateCompare !== 0) return dateCompare;
+    return String(a.collaborator_name || a.collaborator_id || '').localeCompare(String(b.collaborator_name || b.collaborator_id || ''), 'pt-BR');
+  });
+};
+
 export const getProductivityActivityHistory = async ({
   startDate,
   endDate,
@@ -636,5 +720,6 @@ export default {
   collectProductivityActivities,
   analyzeAndStoreProductivity,
   getProductivityDashboardData,
+  getProductivitySummaryData,
   getProductivityActivityHistory,
 };
