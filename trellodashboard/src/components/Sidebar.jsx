@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { FiHome, FiTarget, FiAward, FiShuffle, FiChevronsLeft, FiChevronsRight, FiBookOpen, FiBarChart2, FiMoon, FiSun, FiPieChart } from 'react-icons/fi';
+import { FiHome, FiTarget, FiAward, FiShuffle, FiChevronsLeft, FiChevronsRight, FiBookOpen, FiBarChart2, FiMoon, FiSun, FiPieChart, FiMessageSquare } from 'react-icons/fi';
 import { useTheme } from '../contexts/ThemeContext';
 
 const Sidebar = ({ isOpen, onToggle }) => {
@@ -48,6 +48,10 @@ const Sidebar = ({ isOpen, onToggle }) => {
         <NavLink to="/indicadores-imoview" className={navLinkClass}>
           <FiPieChart size={18} className="flex-shrink-0" />
           <span className={`ml-3 whitespace-nowrap overflow-hidden transition-all ${isOpen ? 'w-auto opacity-100' : 'w-0 opacity-0'}`}>Indicadores Imoview</span>
+        </NavLink>
+        <NavLink to="/indicadores-atendimentos-imoview" className={navLinkClass}>
+          <FiMessageSquare size={18} className="flex-shrink-0" />
+          <span className={`ml-3 whitespace-nowrap overflow-hidden transition-all ${isOpen ? 'w-auto opacity-100' : 'w-0 opacity-0'}`}>Atendimentos Imoview</span>
         </NavLink>
       </nav>
 
