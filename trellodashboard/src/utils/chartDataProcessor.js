@@ -20,7 +20,7 @@ export const GRANULARITY = {
  * @returns {string} Granularity type
  */
 export const determineGranularity = (days) => {
-  if (days <= 31) return GRANULARITY.DAILY;
+  if (days <= 32) return GRANULARITY.DAILY;
   if (days <= 365) return GRANULARITY.WEEKLY;
   return GRANULARITY.MONTHLY;
 };

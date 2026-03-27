@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import PeriodFilter from './PeriodFilter';
 import EvolutionChart from './EvolutionChart';
 import StatusPieChart from './StatusPieChart';
@@ -12,7 +12,7 @@ import ProcessVennDiagram from './ProcessVennDiagram';
 import usePeriodFilter from '../hooks/usePeriodFilter';
 
 const DashboardV2 = ({ dark = true, normalizedData = null }) => {
-  const { periodRange, filterCards } = usePeriodFilter();
+  const { periodRange, filterCards, selectedProcessTypeIds, selectedMemberIds } = usePeriodFilter();
   const [viewMode, setViewMode] = useState('standard');
   const [horizontalGranularity, setHorizontalGranularity] = useState('month');
   const [horizontalCount, setHorizontalCount] = useState(12);
@@ -24,6 +24,80 @@ const DashboardV2 = ({ dark = true, normalizedData = null }) => {
       </div>
     );
   }
+
+  const processTypeOptions = useMemo(() => {
+    const labelsFromBoard = Array.isArray(normalizedData.labels) ? normalizedData.labels : [];
+
+    if (labelsFromBoard.length > 0) {
+      return labelsFromBoard
+        .map((label) => ({
+          id: label.id,
+          name: label.name || 'Sem Nome',
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    }
+
+    const processTypeMap = new Map();
+    normalizedData.cards.forEach((card) => {
+      const cardProcessTypes = Array.isArray(card.processTypes) ? card.processTypes : [];
+      cardProcessTypes.forEach((processType) => {
+        if (!processType?.id) return;
+        processTypeMap.set(processType.id, {
+          id: processType.id,
+          name: processType.name || 'Sem Nome',
+        });
+      });
+    });
+
+    return Array.from(processTypeMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [normalizedData]);
+
+  const cardsByProcessType = useMemo(() => {
+    if (!Array.isArray(normalizedData.cards)) {
+      return normalizedData.cards;
+    }
+
+    return normalizedData.cards.filter((card) => {
+      const matchesProcessType = selectedProcessTypeIds.length === 0 || (() => {
+        const processTypes = Array.isArray(card?.processTypes) ? card.processTypes : [];
+        return processTypes.some((processType) => selectedProcessTypeIds.includes(processType?.id));
+      })();
+
+      const matchesMember = selectedMemberIds.length === 0 || (() => {
+        const members = Array.isArray(card?.members) ? card.members : [];
+        return members.some((member) => selectedMemberIds.includes(member?.id));
+      })();
+
+      return matchesProcessType && matchesMember;
+    });
+  }, [normalizedData.cards, selectedProcessTypeIds, selectedMemberIds]);
+
+  const memberOptions = useMemo(() => {
+    const membersFromBoard = Array.isArray(normalizedData.members) ? normalizedData.members : [];
+
+    if (membersFromBoard.length > 0) {
+      return membersFromBoard
+        .map((member) => ({
+          id: member.id,
+          name: member.name || member.username || 'Sem Nome',
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    }
+
+    const memberMap = new Map();
+    normalizedData.cards.forEach((card) => {
+      const members = Array.isArray(card.members) ? card.members : [];
+      members.forEach((member) => {
+        if (!member?.id) return;
+        memberMap.set(member.id, {
+          id: member.id,
+          name: member.name || member.username || 'Sem Nome',
+        });
+      });
+    });
+
+    return Array.from(memberMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [normalizedData]);
 
   const filteredData = filterCards(normalizedData.cards);
   const { counts, averages } = filteredData;
@@ -90,7 +164,12 @@ const DashboardV2 = ({ dark = true, normalizedData = null }) => {
             </div>
           </div>
         ) : (
-          <PeriodFilter dark={dark} className="mb-0" />
+          <PeriodFilter
+            dark={dark}
+            className="mb-0"
+            processTypeOptions={processTypeOptions}
+            memberOptions={memberOptions}
+          />
         )}
       </div>
 
@@ -99,7 +178,7 @@ const DashboardV2 = ({ dark = true, normalizedData = null }) => {
           dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
         } rounded-2xl p-6 mb-6`}>
           <HorizontalAnalysisDashboard
-            cards={normalizedData.cards}
+            cards={cardsByProcessType}
             dark={dark}
             granularity={horizontalGranularity}
             periodsCount={horizontalCount}
@@ -111,7 +190,7 @@ const DashboardV2 = ({ dark = true, normalizedData = null }) => {
             dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
           } rounded-2xl p-6 mb-6`}>
             <KPIsPanel
-              cards={normalizedData.cards}
+              cards={cardsByProcessType}
               periodRange={periodRange}
               dark={dark}
             />
@@ -121,7 +200,7 @@ const DashboardV2 = ({ dark = true, normalizedData = null }) => {
             dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
           } rounded-2xl p-6 mb-6`}>
             <ProcessVennDiagram
-              cards={normalizedData.cards}
+              cards={cardsByProcessType}
               periodRange={periodRange}
               dark={dark}
             />
@@ -132,7 +211,7 @@ const DashboardV2 = ({ dark = true, normalizedData = null }) => {
               dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
             } rounded-2xl p-6`}>
               <EvolutionChart
-                cards={normalizedData.cards}
+                cards={cardsByProcessType}
                 periodRange={periodRange}
                 dark={dark}
               />
@@ -142,7 +221,7 @@ const DashboardV2 = ({ dark = true, normalizedData = null }) => {
               dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
             } rounded-2xl p-6`}>
               <StatusPieChart
-                cards={normalizedData.cards}
+                cards={cardsByProcessType}
                 periodRange={periodRange}
                 dark={dark}
                 variant="doughnut"
@@ -155,7 +234,7 @@ const DashboardV2 = ({ dark = true, normalizedData = null }) => {
               dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
             } rounded-2xl p-6`}>
               <LabelAnalysisChart
-                cards={normalizedData.cards}
+                cards={cardsByProcessType}
                 periodRange={periodRange}
                 dark={dark}
               />
@@ -165,7 +244,7 @@ const DashboardV2 = ({ dark = true, normalizedData = null }) => {
               dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
             } rounded-2xl p-6`}>
               <ListAnalysisChart
-                cards={normalizedData.cards}
+                cards={cardsByProcessType}
                 periodRange={periodRange}
                 dark={dark}
               />
@@ -175,7 +254,7 @@ const DashboardV2 = ({ dark = true, normalizedData = null }) => {
               dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
             } rounded-2xl p-6`}>
               <MemberAnalysisChart
-                cards={normalizedData.cards}
+                cards={cardsByProcessType}
                 periodRange={periodRange}
                 dark={dark}
               />
@@ -186,7 +265,7 @@ const DashboardV2 = ({ dark = true, normalizedData = null }) => {
             dark ? 'bg-[#0c0c0c] border border-[#272727]' : 'bg-white border border-[#e5e5e5]'
           } rounded-2xl p-6 mb-6`}>
             <MemberProcessTypeBlocks
-              cards={normalizedData.cards}
+              cards={cardsByProcessType}
               periodRange={periodRange}
               dark={dark}
             />
@@ -251,8 +330,9 @@ const DashboardV2 = ({ dark = true, normalizedData = null }) => {
               <p><strong>Data Inicio:</strong> {periodRange.startDate?.toLocaleDateString?.() || 'N/A'}</p>
               <p><strong>Data Fim:</strong> {periodRange.endDate?.toLocaleDateString?.() || 'N/A'}</p>
               <p><strong>Total de cards no board:</strong> {normalizedData.cards.length}</p>
-              <p><strong>Cards com creationDate:</strong> {normalizedData.cards.filter(c => c.creationDate).length}</p>
-              <p><strong>Cards com completionDate:</strong> {normalizedData.cards.filter(c => c.completionDate).length}</p>
+              <p><strong>Cards apos filtros ativos:</strong> {cardsByProcessType.length}</p>
+              <p><strong>Cards com creationDate:</strong> {cardsByProcessType.filter(c => c.creationDate).length}</p>
+              <p><strong>Cards com completionDate:</strong> {cardsByProcessType.filter(c => c.completionDate).length}</p>
             </div>
           </div>
         </>
