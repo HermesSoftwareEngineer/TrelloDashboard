@@ -10,6 +10,7 @@ import RoletaPage from './pages/RoletaPage';
 import ResumePage from './pages/ResumePage';
 import ProductivityAnalysisPage from './pages/ProductivityAnalysisPage';
 import IndicadoresImoviewPage from './pages/IndicadoresImoviewPage';
+import IndicadoresAtendimentosImoviewPage from './pages/IndicadoresAtendimentosImoviewPage';
 
 const LoadingScreen = ({ text, dark = true }) => (
   <div className={`flex items-center justify-center h-screen ${dark ? 'bg-neutral-950 text-neutral-500' : 'bg-neutral-100 text-neutral-600'}`}>
@@ -70,6 +71,7 @@ function App() {
           path="indicadores-imoview"
           element={<IndicadoresImoviewPage trelloCards={cards} trelloCustomFields={customFields} />}
         />
+        <Route path="indicadores-atendimentos-imoview" element={<IndicadoresAtendimentosImoviewPage />} />
       </Route>
     </Routes>
   );
