@@ -29,6 +29,8 @@ const PeriodFilter = ({ dark = false, className = '', processTypeOptions = [], m
     selectedMemberIds,
     toggleMemberFilter,
     clearMemberFilters,
+    canceledFilter,
+    changeCanceledFilter,
   } = usePeriodFilter();
   
   // Local state for custom date inputs
@@ -292,6 +294,20 @@ const PeriodFilter = ({ dark = false, className = '', processTypeOptions = [], m
             </p>
           )}
         </div>
+      </div>
+
+      {/* Canceled Filter */}
+      <div className="w-full">
+        <label className={labelCls}>Cancelados</label>
+        <select 
+          value={canceledFilter} 
+          onChange={(e) => changeCanceledFilter(e.target.value)} 
+          className={fieldCls}
+        >
+          <option value="exclude">Excluir Cancelados</option>
+          <option value="all">Mostrar Todos</option>
+          <option value="only">Só Cancelados</option>
+        </select>
       </div>
     </div>
   );

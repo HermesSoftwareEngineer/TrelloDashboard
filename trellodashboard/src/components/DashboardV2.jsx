@@ -12,7 +12,7 @@ import ProcessVennDiagram from './ProcessVennDiagram';
 import usePeriodFilter from '../hooks/usePeriodFilter';
 
 const DashboardV2 = ({ dark = true, normalizedData = null }) => {
-  const { periodRange, filterCards, selectedProcessTypeIds, selectedMemberIds } = usePeriodFilter();
+  const { periodRange, filterCards, selectedProcessTypeIds, selectedMemberIds, canceledFilter } = usePeriodFilter();
   const [viewMode, setViewMode] = useState('standard');
   const [horizontalGranularity, setHorizontalGranularity] = useState('month');
   const [horizontalCount, setHorizontalCount] = useState(12);
@@ -57,6 +57,22 @@ const DashboardV2 = ({ dark = true, normalizedData = null }) => {
       return normalizedData.cards;
     }
 
+    const isCanceledCard = (card) => {
+      const processTypes = Array.isArray(card?.processTypes) ? card.processTypes : [];
+      return processTypes.some((processType) => processType?.name === 'CANCELADO');
+    };
+
+    const matchesCanceledFilter = (card) => {
+      if (canceledFilter === 'all') {
+        return true;
+      } else if (canceledFilter === 'only') {
+        return isCanceledCard(card);
+      } else if (canceledFilter === 'exclude') {
+        return !isCanceledCard(card);
+      }
+      return true;
+    };
+
     return normalizedData.cards.filter((card) => {
       const matchesProcessType = selectedProcessTypeIds.length === 0 || (() => {
         const processTypes = Array.isArray(card?.processTypes) ? card.processTypes : [];
@@ -68,9 +84,9 @@ const DashboardV2 = ({ dark = true, normalizedData = null }) => {
         return members.some((member) => selectedMemberIds.includes(member?.id));
       })();
 
-      return matchesProcessType && matchesMember;
+      return matchesProcessType && matchesMember && matchesCanceledFilter(card);
     });
-  }, [normalizedData.cards, selectedProcessTypeIds, selectedMemberIds]);
+  }, [normalizedData.cards, selectedProcessTypeIds, selectedMemberIds, canceledFilter]);
 
   const memberOptions = useMemo(() => {
     const membersFromBoard = Array.isArray(normalizedData.members) ? normalizedData.members : [];

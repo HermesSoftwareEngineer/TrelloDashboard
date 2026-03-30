@@ -36,6 +36,9 @@ export const PeriodFilterProvider = ({ children }) => {
   // Reference date (for testing different "current" dates)
   const [referenceDate, setReferenceDate] = useState(new Date());
   
+  // Canceled filter: 'all' (show all), 'only' (show only canceled), 'exclude' (exclude canceled)
+  const [canceledFilter, setCanceledFilter] = useState('exclude');
+  
   /**
    * Calculate current period range based on selected period type
    */
@@ -160,6 +163,16 @@ export const PeriodFilterProvider = ({ children }) => {
   }, []);
   
   /**
+   * Change canceled filter mode
+   * @param {string} mode - 'all' (show all), 'only' (show only canceled), 'exclude' (exclude canceled)
+   */
+  const changeCanceledFilter = useCallback((mode) => {
+    if (['all', 'only', 'exclude'].includes(mode)) {
+      setCanceledFilter(mode);
+    }
+  }, []);
+  
+  /**
    * Apply period filter to cards data
    * Returns filtered cards with statistics
    */
@@ -175,7 +188,7 @@ export const PeriodFilterProvider = ({ children }) => {
 
     const periodFilteredData = applyPeriodFilter(cards, periodRange);
 
-    if (selectedProcessTypeIds.length === 0 && selectedMemberIds.length === 0) {
+    if (selectedProcessTypeIds.length === 0 && selectedMemberIds.length === 0 && canceledFilter === 'exclude') {
       return periodFilteredData;
     }
 
@@ -197,7 +210,26 @@ export const PeriodFilterProvider = ({ children }) => {
       return members.some((member) => selectedMemberIds.includes(member?.id));
     };
 
-    const hasSelectedFilters = (card) => hasSelectedProcessType(card) && hasSelectedMember(card);
+    const isCanceledCard = (card) => {
+      const processTypes = Array.isArray(card?.processTypes) ? card.processTypes : [];
+      return processTypes.some((processType) => processType?.name === 'CANCELADO');
+    };
+
+    const matchesCanceledFilter = (card) => {
+      if (canceledFilter === 'all') {
+        return true;
+      } else if (canceledFilter === 'only') {
+        return isCanceledCard(card);
+      } else if (canceledFilter === 'exclude') {
+        return !isCanceledCard(card);
+      }
+      return true;
+    };
+
+    const hasSelectedFilters = (card) => 
+      hasSelectedProcessType(card) && 
+      hasSelectedMember(card) && 
+      matchesCanceledFilter(card);
 
     const created = periodFilteredData.cards.created.filter(hasSelectedFilters);
     const completed = periodFilteredData.cards.completed.filter(hasSelectedFilters);
@@ -223,7 +255,7 @@ export const PeriodFilterProvider = ({ children }) => {
         completedPerDay: (completed.length / periodRange.days).toFixed(1),
       }
     };
-  }, [periodRange, selectedProcessTypeIds, selectedMemberIds]);
+  }, [periodRange, selectedProcessTypeIds, selectedMemberIds, canceledFilter]);
   
   /**
    * Check if a date is within the current period
@@ -249,6 +281,7 @@ export const PeriodFilterProvider = ({ children }) => {
     periodDescription,
     selectedProcessTypeIds,
     selectedMemberIds,
+    canceledFilter,
     
     // Actions
     changePeriodType,
@@ -261,6 +294,7 @@ export const PeriodFilterProvider = ({ children }) => {
     changeMemberFilter,
     toggleMemberFilter,
     clearMemberFilters,
+    changeCanceledFilter,
     
     // Utilities
     filterCards,
