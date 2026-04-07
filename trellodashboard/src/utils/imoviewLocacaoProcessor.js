@@ -74,7 +74,7 @@ const isContractSectionCard = (card) => {
   const labels = Array.isArray(card?.labels) ? card.labels : [];
   return labels.some((label) => {
     const normalized = normalizeText(label?.name);
-    return normalized.includes('LOCACAO') || normalized.includes('RESCISAO');
+    return normalized.includes('LOCACAO') || normalized.includes('RESCISAO') || normalized.includes('ADITIV');
   });
 };
 
@@ -115,6 +115,11 @@ export const buildLocacaoCardReferences = (cards = [], customFields = []) => {
   const contractCards = cards.filter(isContractSectionCard);
 
   const references = contractCards.map((card) => {
+    const labels = Array.isArray(card?.labels) ? card.labels : [];
+    const hasLocacaoTag = labels.some((label) => normalizeText(label?.name).includes('LOCACAO'));
+    const hasRescisaoTag = labels.some((label) => normalizeText(label?.name).includes('RESCISAO'));
+    const hasAditivoTag = labels.some((label) => normalizeText(label?.name).includes('ADITIV'));
+
     const fieldMap = new Map();
     (card.customFieldItems || []).forEach((item) => {
       fieldMap.set(item.idCustomField, getCustomFieldItemValue(item));
@@ -126,9 +131,18 @@ export const buildLocacaoCardReferences = (cards = [], customFields = []) => {
     const codigoImovel = parseCode(fieldMap.get(aliasMap.imovelFieldId));
 
     return {
+      id: card.id,
       cardId: card.id,
       cardName: card.name,
       cardUrl: card.url,
+      start: card.start,
+      due: card.due,
+      dueComplete: card.dueComplete,
+      dateLastActivity: card.dateLastActivity,
+      labels,
+      hasLocacaoTag,
+      hasRescisaoTag,
+      hasAditivoTag,
       codigoContrato,
       codigoLocador,
       codigoLocatario,
@@ -193,12 +207,16 @@ export const mapContractsWithTrelloReferences = (contracts = [], references = []
     const contractCode = parseCode(contract?.codigo);
     const ownerCodes = getContractOwnerCodes(contract);
     const tenantCodes = getContractTenantCodes(contract);
+    const queryLocatarioCodes = (Array.isArray(contract?._imoviewQueryLocatarioCodes) ? contract._imoviewQueryLocatarioCodes : [])
+      .map((value) => parseCode(value))
+      .filter(Boolean);
     const propertyCodes = getContractPropertyCodes(contract);
 
     const relatedCards = references.filter((cardRef) => {
       if (cardRef.codigoContrato && contractCode && cardRef.codigoContrato === contractCode) return true;
       if (cardRef.codigoLocador && ownerCodes.includes(cardRef.codigoLocador)) return true;
       if (cardRef.codigoLocatario && tenantCodes.includes(cardRef.codigoLocatario)) return true;
+      if (cardRef.codigoLocatario && queryLocatarioCodes.includes(cardRef.codigoLocatario)) return true;
       if (cardRef.codigoImovel && propertyCodes.includes(cardRef.codigoImovel)) return true;
       return false;
     });
@@ -209,6 +227,7 @@ export const mapContractsWithTrelloReferences = (contracts = [], references = []
         contractCode,
         ownerCodes,
         tenantCodes,
+        queryLocatarioCodes,
         propertyCodes,
         relatedCards,
       },

@@ -306,13 +306,26 @@ export const retornarContratosPorReferencias = async ({
   references = [],
   numeroRegistros = 20,
 } = {}) => {
+  const debugEnabled = true;
   const targetsMap = new Map();
+  let skippedWithoutLocatario = 0;
+  let aditivoReferences = 0;
 
   (references || []).forEach((reference) => {
     const parsedLocatarioCode = toPositiveInteger(reference?.codigoLocatario);
-    if (!parsedLocatarioCode) return;
+    if (!parsedLocatarioCode) {
+      skippedWithoutLocatario += 1;
+      return;
+    }
 
-    const parsedContractCode = toPositiveInteger(reference?.codigoContrato) || 0;
+    const isAditivoReference = Boolean(reference?.hasAditivoTag);
+    if (isAditivoReference) {
+      aditivoReferences += 1;
+    }
+
+    const parsedContractCode = isAditivoReference
+      ? 0
+      : (toPositiveInteger(reference?.codigoContrato) || 0);
     const requestKey = `${parsedLocatarioCode}:${parsedContractCode}`;
 
     if (!targetsMap.has(requestKey)) {
@@ -325,6 +338,18 @@ export const retornarContratosPorReferencias = async ({
   });
 
   const requestTargets = Array.from(targetsMap.values());
+
+  if (debugEnabled) {
+    console.log('[Imoview][ContratosPorReferencias] Preparacao', {
+      totalReferences: Array.isArray(references) ? references.length : 0,
+      aditivoReferences,
+      skippedWithoutLocatario,
+      requestTargets: requestTargets.length,
+      requestTargetsAditivos: requestTargets.filter((item) => Number(item.codigoContrato) === 0).length,
+      requestTargetsComContrato: requestTargets.filter((item) => Number(item.codigoContrato) > 0).length,
+      requestTargetsSample: requestTargets.slice(0, 10),
+    });
+  }
 
   if (requestTargets.length === 0) {
     return {
@@ -354,7 +379,28 @@ export const retornarContratosPorReferencias = async ({
     });
 
     if (Array.isArray(body?.lista)) {
-      contracts.push(...body.lista);
+      body.lista.forEach((contract) => {
+        const previousCodes = Array.isArray(contract?._imoviewQueryLocatarioCodes)
+          ? contract._imoviewQueryLocatarioCodes
+          : [];
+
+        contracts.push({
+          ...contract,
+          _imoviewQueryLocatarioCodes: Array.from(new Set([
+            ...previousCodes,
+            requestTarget.codigoLocatario,
+          ].filter(Boolean))),
+        });
+      });
+    }
+
+    if (debugEnabled) {
+      console.log('[Imoview][ContratosPorReferencias] Resposta', {
+        codigoLocatario: requestTarget.codigoLocatario,
+        codigoContrato: requestTarget.codigoContrato,
+        quantidade: Number(body?.quantidade) || 0,
+        itensLista: Array.isArray(body?.lista) ? body.lista.length : 0,
+      });
     }
   }
 
@@ -363,8 +409,28 @@ export const retornarContratosPorReferencias = async ({
     const key = toPositiveInteger(contract?.codigo) || `row-${index}`;
     if (!uniqueByCode.has(key)) {
       uniqueByCode.set(key, contract);
+      return;
     }
+
+    const previous = uniqueByCode.get(key);
+    const mergedQueryLocatarioCodes = Array.from(new Set([
+      ...(Array.isArray(previous?._imoviewQueryLocatarioCodes) ? previous._imoviewQueryLocatarioCodes : []),
+      ...(Array.isArray(contract?._imoviewQueryLocatarioCodes) ? contract._imoviewQueryLocatarioCodes : []),
+    ]));
+
+    uniqueByCode.set(key, {
+      ...previous,
+      _imoviewQueryLocatarioCodes: mergedQueryLocatarioCodes,
+    });
   });
+
+  if (debugEnabled) {
+    console.log('[Imoview][ContratosPorReferencias] Resultado', {
+      contratosBrutos: contracts.length,
+      contratosUnicos: uniqueByCode.size,
+      quantidadeSomada: responses.reduce((sum, item) => sum + (Number(item?.body?.quantidade) || 0), 0),
+    });
+  }
 
   return {
     contracts: Array.from(uniqueByCode.values()),

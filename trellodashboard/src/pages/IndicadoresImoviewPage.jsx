@@ -13,6 +13,7 @@ import {
   getContractStartDateFromImoview,
   isActiveContractStatus,
   mapContractsWithTrelloReferences,
+  parseImoviewMoney,
   resolveContractStatusLabel,
 } from '../utils/imoviewLocacaoProcessor';
 import ContractsHeader from '../components/imoview/ContractsHeader';
@@ -24,12 +25,57 @@ import ProducaoContratualSection from '../components/imoview/ProducaoContratualS
 import RescisoesChurnSection from '../components/imoview/RescisoesChurnSection';
 import PortfolioKpisSection from '../components/imoview/PortfolioKpisSection';
 import StatusChartsSection from '../components/imoview/StatusChartsSection';
+import AditivosKpisSection from '../components/imoview/AditivosKpisSection';
 import PayloadSampleSection from '../components/imoview/PayloadSampleSection';
 import NextStepSection from '../components/imoview/NextStepSection';
 import ContractsDrilldownModal from '../components/imoview/ContractsDrilldownModal';
 import { PERIOD_FILTER_TYPES, getPeriodRange } from '../components/imoview/contractsPeriod';
 
 const getMonthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+const normalizeText = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim()
+  .toUpperCase();
+
+const hasAditivoTag = (card) => {
+  if (card?.hasAditivoTag) return true;
+
+  const labels = Array.isArray(card?.labels) ? card.labels : [];
+  return labels.some((label) => normalizeText(label?.name).includes('ADITIV'));
+};
+
+const extractCreationDateFromCardId = (cardId) => {
+  if (!cardId || typeof cardId !== 'string' || cardId.length < 8) return null;
+  const hexTimestamp = cardId.slice(0, 8);
+  const seconds = Number.parseInt(hexTimestamp, 16);
+  if (Number.isNaN(seconds)) return null;
+  const parsedDate = new Date(seconds * 1000);
+  if (Number.isNaN(parsedDate.getTime())) return null;
+  return parsedDate;
+};
+
+const getAditivoStartDate = (card) => {
+  if (card?.start) {
+    const parsedStart = new Date(card.start);
+    if (!Number.isNaN(parsedStart.getTime())) return parsedStart;
+  }
+
+  if (card?.dateLastActivity) {
+    const parsedLastActivity = new Date(card.dateLastActivity);
+    if (!Number.isNaN(parsedLastActivity.getTime())) return parsedLastActivity;
+  }
+
+  return extractCreationDateFromCardId(card?.id || card?.cardId);
+};
+
+const getAditivoCompletionDate = (card) => {
+  if (!card?.dueComplete || !card?.due) return null;
+  const completionDate = new Date(card.due);
+  if (Number.isNaN(completionDate.getTime())) return null;
+  return completionDate;
+};
 
 const isDateInRange = (date, startDate, endDate) => {
   if (!date || !startDate || !endDate) return false;
@@ -209,6 +255,100 @@ const IndicadoresImoviewPage = ({ trelloCards = [], trelloCustomFields = [] }) =
     };
   }, [contracts, selectedPeriodRange]);
 
+  const aditivosMetrics = useMemo(() => {
+    const { startDate, endDate } = selectedPeriodRange;
+
+    const aditivosCards = trelloCards.filter(hasAditivoTag);
+    const aditivosConcluidosNoPeriodoCards = aditivosCards.filter((card) => isDateInRange(getAditivoCompletionDate(card), startDate, endDate));
+    const aditivosIniciadosNoPeriodoCards = aditivosCards.filter((card) => isDateInRange(getAditivoStartDate(card), startDate, endDate));
+
+    const contratosComAditivosConcluidos = contracts.filter((contract) => {
+      const relatedCards = Array.isArray(contract?._trello?.relatedCards) ? contract._trello.relatedCards : [];
+      return relatedCards.some((card) => hasAditivoTag(card) && isDateInRange(getAditivoCompletionDate(card), startDate, endDate));
+    });
+
+    const contratosComAditivosIniciados = contracts.filter((contract) => {
+      const relatedCards = Array.isArray(contract?._trello?.relatedCards) ? contract._trello.relatedCards : [];
+      return relatedCards.some((card) => hasAditivoTag(card) && isDateInRange(getAditivoStartDate(card), startDate, endDate));
+    });
+
+    const valorAluguelContratosAditivosConcluidos = contratosComAditivosConcluidos
+      .reduce((sum, contract) => sum + parseImoviewMoney(contract?.valoraluguel), 0);
+
+    const valorAluguelContratosAditivosIniciados = contratosComAditivosIniciados
+      .reduce((sum, contract) => sum + parseImoviewMoney(contract?.valoraluguel), 0);
+
+    return {
+      aditivosConcluidosNoPeriodo: aditivosConcluidosNoPeriodoCards.length,
+      aditivosIniciadosNoPeriodo: aditivosIniciadosNoPeriodoCards.length,
+      valorAluguelContratosAditivosConcluidos,
+      valorAluguelContratosAditivosIniciados,
+      contratosComAditivosConcluidos,
+      contratosComAditivosIniciados,
+    };
+  }, [trelloCards, contracts, selectedPeriodRange]);
+
+  useEffect(() => {
+    const { startDate, endDate } = selectedPeriodRange;
+
+    const aditivosReferences = locacaoReference.references.filter((item) => Boolean(item?.hasAditivoTag));
+    const aditivosReferencesWithLocatario = aditivosReferences.filter((item) => Boolean(item?.codigoLocatario));
+
+    const contractsWithAnyAditivoLink = contracts.filter((contract) => {
+      const relatedCards = Array.isArray(contract?._trello?.relatedCards) ? contract._trello.relatedCards : [];
+      return relatedCards.some((card) => hasAditivoTag(card));
+    });
+
+    console.log('[Imoview][Aditivos] Diagnostico', {
+      periodo: {
+        startDate: startDate?.toISOString?.(),
+        endDate: endDate?.toISOString?.(),
+      },
+      trelloCardsTotal: trelloCards.length,
+      contractsTotal: contracts.length,
+      requestTargetsTotal: requestTargets.length,
+      responsesTotal: responses.length,
+      aditivosReferencesTotal: aditivosReferences.length,
+      aditivosReferencesWithLocatario: aditivosReferencesWithLocatario.length,
+      contractsWithAnyAditivoLink: contractsWithAnyAditivoLink.length,
+      aditivosConcluidosNoPeriodo: aditivosMetrics.aditivosConcluidosNoPeriodo,
+      aditivosIniciadosNoPeriodo: aditivosMetrics.aditivosIniciadosNoPeriodo,
+      contratosComAditivosConcluidos: aditivosMetrics.contratosComAditivosConcluidos.length,
+      contratosComAditivosIniciados: aditivosMetrics.contratosComAditivosIniciados.length,
+      valorAluguelContratosAditivosConcluidos: aditivosMetrics.valorAluguelContratosAditivosConcluidos,
+      valorAluguelContratosAditivosIniciados: aditivosMetrics.valorAluguelContratosAditivosIniciados,
+      sampleAditivosReferences: aditivosReferencesWithLocatario.slice(0, 5).map((item) => ({
+        cardName: item?.cardName,
+        codigoLocatario: item?.codigoLocatario,
+        codigoContrato: item?.codigoContrato,
+        hasAditivoTag: item?.hasAditivoTag,
+      })),
+      sampleContractsLinkedToAditivos: contractsWithAnyAditivoLink.slice(0, 5).map((contract) => ({
+        codigoContrato: contract?.codigo,
+        valorAluguel: contract?.valoraluguel,
+        tenantCodes: contract?._trello?.tenantCodes,
+        queryLocatarioCodes: contract?._trello?.queryLocatarioCodes,
+        relatedAditivoCards: (Array.isArray(contract?._trello?.relatedCards) ? contract._trello.relatedCards : [])
+          .filter((card) => hasAditivoTag(card))
+          .map((card) => ({
+            cardName: card?.cardName || card?.name,
+            codigoLocatario: card?.codigoLocatario,
+            start: card?.start,
+            due: card?.due,
+            dueComplete: card?.dueComplete,
+          })),
+      })),
+    });
+  }, [
+    locacaoReference.references,
+    trelloCards,
+    contracts,
+    requestTargets,
+    responses,
+    selectedPeriodRange,
+    aditivosMetrics,
+  ]);
+
   const openContractsDetails = useCallback(({ title, subtitle, contracts: items = [] }) => {
     const sortedContracts = Array.isArray(items)
       ? [...items].sort((a, b) => String(a?.codigo ?? '').localeCompare(String(b?.codigo ?? ''), 'pt-BR', { numeric: true }))
@@ -353,6 +493,17 @@ const IndicadoresImoviewPage = ({ trelloCards = [], trelloCustomFields = [] }) =
         timelineData={timelineData}
         contractsByStatus={contractsDrilldownData.contractsByStatus}
         contractsByStartMonth={contractsDrilldownData.contractsByStartMonth}
+        onOpenContractsDetails={openContractsDetails}
+      />
+
+      <AditivosKpisSection
+        dark={dark}
+        aditivosConcluidosNoPeriodo={aditivosMetrics.aditivosConcluidosNoPeriodo}
+        aditivosIniciadosNoPeriodo={aditivosMetrics.aditivosIniciadosNoPeriodo}
+        valorAluguelContratosAditivosConcluidos={aditivosMetrics.valorAluguelContratosAditivosConcluidos}
+        valorAluguelContratosAditivosIniciados={aditivosMetrics.valorAluguelContratosAditivosIniciados}
+        contratosComAditivosConcluidos={aditivosMetrics.contratosComAditivosConcluidos}
+        contratosComAditivosIniciados={aditivosMetrics.contratosComAditivosIniciados}
         onOpenContractsDetails={openContractsDetails}
       />
 
