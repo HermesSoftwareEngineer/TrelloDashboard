@@ -1234,33 +1234,41 @@ const processData = (actions, cardsWithChecklists, listsMap, selectedDate, filte
     return true;
   });
 
-  const completedChecklistActions = actions
-    .filter((a) => a.type === 'updateCheckItemStateOnCard' && a.data?.checkItem?.state === 'complete')
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
-
   const completedChecklistMap = {};
-  completedChecklistActions.forEach((action) => {
-    const memberId = action.memberCreator?.id;
-    if (memberId) allMemberIds.add(memberId);
+  (cardsWithChecklists ?? []).forEach((card) => {
+    const checklists = card.checklists ?? [];
 
-    const cardId = action.data?.card?.id;
-    const cardName = action.data?.card?.name ?? '';
+    checklists.forEach((checklist) => {
+      const items = checklist.checkItems ?? [];
 
-    if (!completedChecklistMap[cardId]) {
-      completedChecklistMap[cardId] = {
-        cardId,
-        cardName,
-        cardLabels: cardMetaById[cardId]?.labels || [],
-        items: [],
-      };
-    }
+      items.forEach((item) => {
+        if (!item.due) return;
 
-    completedChecklistMap[cardId].items.push({
-      name: action.data?.checkItem?.name ?? '',
-      checklistName: action.data?.checklist?.name ?? '',
-      due: action.data?.checkItem?.due ?? null,
-      memberId,
-      memberName: memberId ? (membersMap[memberId] ?? action.memberCreator?.fullName ?? action.memberCreator?.username ?? 'Desconhecido') : 'Sem responsável',
+        const itemDue = new Date(item.due);
+        if (!sameDay(itemDue, selectedDate)) return;
+        if (item.state !== 'complete') return;
+
+        const cardId = card.id;
+        const memberId = item.idMember;
+        if (memberId) allMemberIds.add(memberId);
+
+        if (!completedChecklistMap[cardId]) {
+          completedChecklistMap[cardId] = {
+            cardId,
+            cardName: card.name ?? '',
+            cardLabels: cardMetaById[cardId]?.labels || [],
+            items: [],
+          };
+        }
+
+        completedChecklistMap[cardId].items.push({
+          name: item.name ?? '',
+          checklistName: checklist.name ?? '',
+          due: item.due,
+          memberId,
+          memberName: memberId ? (membersMap[memberId] ?? 'Desconhecido') : 'Sem responsável',
+        });
+      });
     });
   });
 

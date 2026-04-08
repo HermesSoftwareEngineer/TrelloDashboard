@@ -29,7 +29,7 @@ const fetchFromTrello = async (url, options = {}) => {
 
 /**
  * Fetch board actions for a specific day.
- * Returns commentCard, updateCheckItemStateOnCard and updateCard actions.
+ * Returns commentCard and updateCard actions.
  * @param {Date} date - JS Date object representing the selected day
  */
 export const getActionsByDate = async (date) => {
@@ -39,7 +39,7 @@ export const getActionsByDate = async (date) => {
   before.setHours(23, 59, 59, 999);
 
   const url = buildUrl(`/boards/${BOARD_ID}/actions`, {
-    filter: 'commentCard,updateCheckItemStateOnCard,updateCard',
+    filter: 'commentCard,updateCard',
     since: since.toISOString(),
     before: before.toISOString(),
     limit: 1000,
