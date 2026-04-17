@@ -85,7 +85,7 @@ export const getLists = async () => {
 
 /**
  * Get all cards from the board with full details
- * Includes dateLastActivity as fallback for creation date if 'start' is not set
+ * Keeps Trello date fields available so each dashboard can decide its own date rules
  */
 export const getCards = async () => {
   const url = buildUrl(`/boards/${BOARD_ID}/cards`, {

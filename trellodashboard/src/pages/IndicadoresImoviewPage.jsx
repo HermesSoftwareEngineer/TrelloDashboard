@@ -29,6 +29,7 @@ import AditivosKpisSection from '../components/imoview/AditivosKpisSection';
 import PayloadSampleSection from '../components/imoview/PayloadSampleSection';
 import NextStepSection from '../components/imoview/NextStepSection';
 import ContractsDrilldownModal from '../components/imoview/ContractsDrilldownModal';
+import CardsListModal from '../components/CardsListModal';
 import { PERIOD_FILTER_TYPES, getPeriodRange } from '../components/imoview/contractsPeriod';
 
 const getMonthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -59,28 +60,13 @@ const getStrictRelatedAditivoCards = (contract) => {
   ));
 };
 
-const extractCreationDateFromCardId = (cardId) => {
-  if (!cardId || typeof cardId !== 'string' || cardId.length < 8) return null;
-  const hexTimestamp = cardId.slice(0, 8);
-  const seconds = Number.parseInt(hexTimestamp, 16);
-  if (Number.isNaN(seconds)) return null;
-  const parsedDate = new Date(seconds * 1000);
-  if (Number.isNaN(parsedDate.getTime())) return null;
-  return parsedDate;
-};
-
 const getAditivoStartDate = (card) => {
-  if (card?.start) {
-    const parsedStart = new Date(card.start);
-    if (!Number.isNaN(parsedStart.getTime())) return parsedStart;
-  }
+  if (!card?.start) return null;
 
-  if (card?.dateLastActivity) {
-    const parsedLastActivity = new Date(card.dateLastActivity);
-    if (!Number.isNaN(parsedLastActivity.getTime())) return parsedLastActivity;
-  }
+  const parsedStart = new Date(card.start);
+  if (Number.isNaN(parsedStart.getTime())) return null;
 
-  return extractCreationDateFromCardId(card?.id || card?.cardId);
+  return parsedStart;
 };
 
 const getAditivoCompletionDate = (card) => {
@@ -89,6 +75,17 @@ const getAditivoCompletionDate = (card) => {
   if (Number.isNaN(completionDate.getTime())) return null;
   return completionDate;
 };
+
+const adaptAditivoCardForModal = (card, dateField) => ({
+  ...card,
+  processTypes: Array.isArray(card?.labels)
+    ? card.labels.map((label) => ({
+      id: label?.id || label?.name,
+      name: label?.name,
+    }))
+    : [],
+  displayDate: dateField === 'due' ? getAditivoCompletionDate(card) : getAditivoStartDate(card),
+});
 
 const isDateInRange = (date, startDate, endDate) => {
   if (!date || !startDate || !endDate) return false;
@@ -128,6 +125,12 @@ const IndicadoresImoviewPage = ({ trelloCards = [], trelloCustomFields = [] }) =
     title: '',
     subtitle: '',
     contracts: [],
+  });
+  const [cardsModal, setCardsModal] = useState({
+    isOpen: false,
+    title: '',
+    subtitle: '',
+    sections: [],
   });
 
   const runtimeConfig = useMemo(() => imoviewService.getImoviewRuntimeConfig(), []);
@@ -294,6 +297,8 @@ const IndicadoresImoviewPage = ({ trelloCards = [], trelloCustomFields = [] }) =
     return {
       aditivosConcluidosNoPeriodo: aditivosConcluidosNoPeriodoCards.length,
       aditivosIniciadosNoPeriodo: aditivosIniciadosNoPeriodoCards.length,
+      aditivosConcluidosNoPeriodoCards,
+      aditivosIniciadosNoPeriodoCards,
       valorAluguelContratosAditivosConcluidos,
       valorAluguelContratosAditivosIniciados,
       contratosComAditivosConcluidos,
@@ -377,6 +382,28 @@ const IndicadoresImoviewPage = ({ trelloCards = [], trelloCustomFields = [] }) =
 
   const closeContractsDetails = useCallback(() => {
     setDrilldownModal((previous) => ({
+      ...previous,
+      isOpen: false,
+    }));
+  }, []);
+
+  const openCardsDetails = useCallback(({ title, subtitle, sections = [] }) => {
+    setCardsModal({
+      isOpen: true,
+      title: title || 'Detalhamento de cards',
+      subtitle: subtitle || 'Segmento selecionado',
+      sections: sections.map((section) => ({
+        ...section,
+        cards: Array.isArray(section?.cards)
+          ? section.cards.map((card) => adaptAditivoCardForModal(card, section?.dateField))
+          : [],
+        dateField: 'displayDate',
+      })),
+    });
+  }, []);
+
+  const closeCardsDetails = useCallback(() => {
+    setCardsModal((previous) => ({
       ...previous,
       isOpen: false,
     }));
@@ -513,11 +540,14 @@ const IndicadoresImoviewPage = ({ trelloCards = [], trelloCustomFields = [] }) =
         dark={dark}
         aditivosConcluidosNoPeriodo={aditivosMetrics.aditivosConcluidosNoPeriodo}
         aditivosIniciadosNoPeriodo={aditivosMetrics.aditivosIniciadosNoPeriodo}
+        aditivosConcluidosNoPeriodoCards={aditivosMetrics.aditivosConcluidosNoPeriodoCards}
+        aditivosIniciadosNoPeriodoCards={aditivosMetrics.aditivosIniciadosNoPeriodoCards}
         valorAluguelContratosAditivosConcluidos={aditivosMetrics.valorAluguelContratosAditivosConcluidos}
         valorAluguelContratosAditivosIniciados={aditivosMetrics.valorAluguelContratosAditivosIniciados}
         contratosComAditivosConcluidos={aditivosMetrics.contratosComAditivosConcluidos}
         contratosComAditivosIniciados={aditivosMetrics.contratosComAditivosIniciados}
         onOpenContractsDetails={openContractsDetails}
+        onOpenCardsDetails={openCardsDetails}
       />
 
       <PayloadSampleSection dark={dark} samplePayload={samplePayload} />
@@ -532,6 +562,16 @@ const IndicadoresImoviewPage = ({ trelloCards = [], trelloCustomFields = [] }) =
         contracts={drilldownModal.contracts}
         onClose={closeContractsDetails}
       />
+
+      {cardsModal.isOpen ? (
+        <CardsListModal
+          dark={dark}
+          title={cardsModal.title}
+          subtitle={cardsModal.subtitle}
+          sections={cardsModal.sections}
+          onClose={closeCardsDetails}
+        />
+      ) : null}
     </div>
   );
 };

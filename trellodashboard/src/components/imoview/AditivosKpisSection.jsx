@@ -6,11 +6,14 @@ const AditivosKpisSection = ({
   dark,
   aditivosConcluidosNoPeriodo,
   aditivosIniciadosNoPeriodo,
+  aditivosConcluidosNoPeriodoCards,
+  aditivosIniciadosNoPeriodoCards,
   valorAluguelContratosAditivosConcluidos,
   valorAluguelContratosAditivosIniciados,
   contratosComAditivosConcluidos,
   contratosComAditivosIniciados,
   onOpenContractsDetails,
+  onOpenCardsDetails,
 }) => {
   const openDetails = (title, contracts) => {
     if (!onOpenContractsDetails) return;
@@ -18,6 +21,24 @@ const AditivosKpisSection = ({
       title,
       subtitle: 'Indicador de aditivos',
       contracts,
+    });
+  };
+
+  const openCardsDetails = (title, cards, dateField) => {
+    if (!onOpenCardsDetails) return;
+    onOpenCardsDetails({
+      title,
+      subtitle: 'Cards de aditivos',
+      sections: [
+        {
+          title: 'Cards encontrados',
+          cards,
+          dotColor: 'bg-amber-500',
+          accentColor: 'text-amber-400',
+          badgeColor: 'bg-amber-500/15 text-amber-400',
+          dateField,
+        },
+      ],
     });
   };
 
@@ -29,11 +50,13 @@ const AditivosKpisSection = ({
           dark={dark}
           label="Aditivos concluídos no período"
           value={aditivosConcluidosNoPeriodo}
+          onClick={() => openCardsDetails('Aditivos concluídos no período', aditivosConcluidosNoPeriodoCards, 'due')}
         />
         <KpiCard
           dark={dark}
           label="Aditivos iniciados no período"
           value={aditivosIniciadosNoPeriodo}
+          onClick={() => openCardsDetails('Aditivos iniciados no período', aditivosIniciadosNoPeriodoCards, 'start')}
         />
         <KpiCard
           dark={dark}
