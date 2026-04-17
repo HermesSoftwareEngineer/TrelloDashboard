@@ -46,6 +46,19 @@ const hasAditivoTag = (card) => {
   return labels.some((label) => normalizeText(label?.name).includes('ADITIV'));
 };
 
+const getStrictRelatedAditivoCards = (contract) => {
+  const relatedCards = Array.isArray(contract?._trello?.relatedCards) ? contract._trello.relatedCards : [];
+  const contractCode = contract?._trello?.contractCode;
+
+  if (!contractCode) return [];
+
+  return relatedCards.filter((card) => (
+    hasAditivoTag(card)
+    && Boolean(card?.codigoContrato)
+    && card.codigoContrato === contractCode
+  ));
+};
+
 const extractCreationDateFromCardId = (cardId) => {
   if (!cardId || typeof cardId !== 'string' || cardId.length < 8) return null;
   const hexTimestamp = cardId.slice(0, 8);
@@ -263,13 +276,13 @@ const IndicadoresImoviewPage = ({ trelloCards = [], trelloCustomFields = [] }) =
     const aditivosIniciadosNoPeriodoCards = aditivosCards.filter((card) => isDateInRange(getAditivoStartDate(card), startDate, endDate));
 
     const contratosComAditivosConcluidos = contracts.filter((contract) => {
-      const relatedCards = Array.isArray(contract?._trello?.relatedCards) ? contract._trello.relatedCards : [];
-      return relatedCards.some((card) => hasAditivoTag(card) && isDateInRange(getAditivoCompletionDate(card), startDate, endDate));
+      const relatedAditivoCards = getStrictRelatedAditivoCards(contract);
+      return relatedAditivoCards.some((card) => isDateInRange(getAditivoCompletionDate(card), startDate, endDate));
     });
 
     const contratosComAditivosIniciados = contracts.filter((contract) => {
-      const relatedCards = Array.isArray(contract?._trello?.relatedCards) ? contract._trello.relatedCards : [];
-      return relatedCards.some((card) => hasAditivoTag(card) && isDateInRange(getAditivoStartDate(card), startDate, endDate));
+      const relatedAditivoCards = getStrictRelatedAditivoCards(contract);
+      return relatedAditivoCards.some((card) => isDateInRange(getAditivoStartDate(card), startDate, endDate));
     });
 
     const valorAluguelContratosAditivosConcluidos = contratosComAditivosConcluidos
@@ -295,8 +308,8 @@ const IndicadoresImoviewPage = ({ trelloCards = [], trelloCustomFields = [] }) =
     const aditivosReferencesWithLocatario = aditivosReferences.filter((item) => Boolean(item?.codigoLocatario));
 
     const contractsWithAnyAditivoLink = contracts.filter((contract) => {
-      const relatedCards = Array.isArray(contract?._trello?.relatedCards) ? contract._trello.relatedCards : [];
-      return relatedCards.some((card) => hasAditivoTag(card));
+      const relatedAditivoCards = getStrictRelatedAditivoCards(contract);
+      return relatedAditivoCards.length > 0;
     });
 
     console.log('[Imoview][Aditivos] Diagnostico', {
@@ -328,11 +341,11 @@ const IndicadoresImoviewPage = ({ trelloCards = [], trelloCustomFields = [] }) =
         valorAluguel: contract?.valoraluguel,
         tenantCodes: contract?._trello?.tenantCodes,
         queryLocatarioCodes: contract?._trello?.queryLocatarioCodes,
-        relatedAditivoCards: (Array.isArray(contract?._trello?.relatedCards) ? contract._trello.relatedCards : [])
-          .filter((card) => hasAditivoTag(card))
+        relatedAditivoCards: getStrictRelatedAditivoCards(contract)
           .map((card) => ({
             cardName: card?.cardName || card?.name,
             codigoLocatario: card?.codigoLocatario,
+            codigoContrato: card?.codigoContrato,
             start: card?.start,
             due: card?.due,
             dueComplete: card?.dueComplete,
