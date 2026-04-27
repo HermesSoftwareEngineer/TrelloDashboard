@@ -87,12 +87,13 @@ export const getLists = async () => {
  * Get all cards from the board with full details
  * Keeps Trello date fields available so each dashboard can decide its own date rules
  */
-export const getCards = async () => {
+export const getCards = async ({ includeClosed = false } = {}) => {
   const url = buildUrl(`/boards/${BOARD_ID}/cards`, {
     fields: 'id,name,desc,due,dueComplete,start,dateLastActivity,labels,idList,idMembers,url,pos,closed,badges',
     customFieldItems: 'true',
     members: 'true',
     member_fields: 'fullName,username,id',
+    filter: includeClosed ? 'all' : 'open',
   });
   const cards = await fetchFromTrello(url);
   

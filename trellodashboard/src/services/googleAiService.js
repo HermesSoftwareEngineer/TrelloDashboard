@@ -4,6 +4,7 @@ const GOOGLE_AI_API_KEY = import.meta.env.VITE_GOOGLE_AI_API_KEY;
 const GOOGLE_AI_MODEL = import.meta.env.VITE_GOOGLE_AI_MODEL || 'gemini-2.0-flash';
 
 const DEFAULT_SUMMARY = 'Análise concluída pela IA.';
+const DEFAULT_BOTTLENECK_SUMMARY = 'Análise de gargalos concluída pela IA.';
 
 const extractJsonFromText = (rawText) => {
   if (!rawText || typeof rawText !== 'string') {
@@ -188,6 +189,136 @@ export const analyzeProductivityWithGoogleAI = async ({ activities, pointsTable,
   });
 };
 
+const buildBottleneckPrompt = ({ userPrompt, context }) => {
+  const safeContext = {
+    boardName: context?.boardName || '',
+    generatedAt: context?.generatedAt || new Date().toISOString(),
+    totalCards: Number(context?.totalCards || 0),
+    cardsWithBottleneck: Number(context?.cardsWithBottleneck || 0),
+    cardsWithoutBottleneck: Number(context?.cardsWithoutBottleneck || 0),
+    cards: Array.isArray(context?.cards) ? context.cards : [],
+  };
+
+  return [
+    'Você é um analista de processos especializado em identificar gargalos operacionais em cards do Trello.',
+    'Responda EXCLUSIVAMENTE em JSON válido, sem markdown e sem texto extra.',
+    '',
+    'Objetivo:',
+    'Analisar os gargalos informados nos cards e produzir recomendações práticas e priorizadas.',
+    '',
+    'Prompt do usuário:',
+    String(userPrompt || '').trim(),
+    '',
+    'Contexto para análise:',
+    JSON.stringify(safeContext, null, 2),
+    '',
+    'Formato obrigatório da resposta JSON:',
+    JSON.stringify(
+      {
+        summary: 'Resumo executivo da situação geral.',
+        criticalPoints: [
+          'Ponto crítico 1',
+          'Ponto crítico 2',
+        ],
+        recommendations: [
+          {
+            title: 'Ação recomendada',
+            priority: 'alta',
+            reason: 'Motivo da recomendação',
+            expectedImpact: 'Impacto esperado',
+          },
+        ],
+        highlightedCards: [
+          {
+            title: 'Nome do card',
+            bottleneck: 'Descrição do gargalo',
+            priority: 'alta',
+            reason: 'Por que é prioritário',
+          },
+        ],
+      },
+      null,
+      2
+    ),
+    '',
+    'Regras:',
+    '- Não invente cards ou dados fora do contexto enviado.',
+    '- Seja objetivo e acionável.',
+    '- Prioridade deve ser: alta, media ou baixa.',
+    '- Se houver poucos dados, sinalize isso no summary.',
+  ].join('\n');
+};
+
+export const analyzeBottlenecksWithGoogleAI = async ({ userPrompt, context }) => {
+  if (!GOOGLE_AI_API_KEY) {
+    throw new Error('Configure VITE_GOOGLE_AI_API_KEY para usar a análise de gargalos com IA.');
+  }
+
+  const prompt = buildBottleneckPrompt({ userPrompt, context });
+
+  return traceWithLangSmith({
+    name: 'google_ai_bottleneck_analysis',
+    runType: 'llm',
+    inputs: {
+      model: GOOGLE_AI_MODEL,
+      cards_count: context?.totalCards || 0,
+      cards_with_bottleneck: context?.cardsWithBottleneck || 0,
+      prompt: userPrompt,
+    },
+    metadata: {
+      provider: 'google-ai-studio',
+      feature: 'bottleneck-analysis',
+    },
+    tags: ['bottleneck', 'google-ai'],
+    fn: async () => {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_AI_MODEL}:generateContent?key=${GOOGLE_AI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: prompt }],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.3,
+              responseMimeType: 'application/json',
+            },
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Erro na IA do Google: ${response.status} - ${errorBody}`);
+      }
+
+      const payload = await response.json();
+      const text = payload?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('\n') || '';
+      const parsed = extractJsonFromText(text);
+
+      return {
+        summary: String(parsed.summary || DEFAULT_BOTTLENECK_SUMMARY),
+        criticalPoints: Array.isArray(parsed.criticalPoints) ? parsed.criticalPoints.map((item) => String(item || '').trim()).filter(Boolean) : [],
+        recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
+        highlightedCards: Array.isArray(parsed.highlightedCards) ? parsed.highlightedCards : [],
+      };
+    },
+    mapOutputs: (result) => ({
+      summary: result.summary,
+      critical_points_count: result.criticalPoints?.length || 0,
+      recommendations_count: result.recommendations?.length || 0,
+      highlighted_cards_count: result.highlightedCards?.length || 0,
+    }),
+  });
+};
+
 export default {
   analyzeProductivityWithGoogleAI,
+  analyzeBottlenecksWithGoogleAI,
 };

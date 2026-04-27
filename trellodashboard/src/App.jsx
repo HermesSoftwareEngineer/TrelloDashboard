@@ -11,6 +11,7 @@ import ResumePage from './pages/ResumePage';
 import ProductivityAnalysisPage from './pages/ProductivityAnalysisPage';
 import IndicadoresImoviewPage from './pages/IndicadoresImoviewPage';
 import IndicadoresAtendimentosImoviewPage from './pages/IndicadoresAtendimentosImoviewPage';
+import BottleneckAnalysisPage from './pages/BottleneckAnalysisPage';
 
 const LoadingScreen = ({ text, dark = true }) => (
   <div className={`flex items-center justify-center h-screen ${dark ? 'bg-neutral-950 text-neutral-500' : 'bg-neutral-100 text-neutral-600'}`}>
@@ -67,6 +68,10 @@ function App() {
         <Route path="roleta" element={<RoletaPage />} />
         <Route path="resumo" element={<ResumePage />} />
         <Route path="analise-produtividade" element={<ProductivityAnalysisPage />} />
+        <Route
+          path="analise-gargalos"
+          element={<BottleneckAnalysisPage cards={cards} customFields={customFields} members={members} />}
+        />
         <Route
           path="indicadores-imoview"
           element={<IndicadoresImoviewPage trelloCards={cards} trelloCustomFields={customFields} />}
