@@ -6,7 +6,6 @@ import {
   FiCheck,
   FiChevronDown,
   FiChevronUp,
-  FiDatabase,
   FiEdit2,
   FiLoader,
   FiRefreshCw,
@@ -1125,6 +1124,7 @@ const ProductivityAnalysisPage = () => {
 
   const [dailyData, setDailyData] = useState([]);
   const [topActivities, setTopActivities] = useState([]);
+  const [activityRows, setActivityRows] = useState([]);
   const [summaryRows, setSummaryRows] = useState([]);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [historyModalTitle, setHistoryModalTitle] = useState('');
@@ -1189,11 +1189,12 @@ const ProductivityAnalysisPage = () => {
   };
 
   const loadDashboardData = async (range = selectedRange, collaboratorIds = selectedCollaboratorIds) => {
-    const [{ dailyData: dailyRows, topActivities: topRows }, summaryTrendRows] = await Promise.all([
+    const [{ dailyData: dailyRows, topActivities: topRows, activityRows: scoredRows }, summaryTrendRows] = await Promise.all([
       productivityService.getProductivityDashboardData({
         startDate: range.startDate,
         endDate: range.endDate,
         selectedCollaboratorIds: collaboratorIds,
+        settings,
       }),
       productivityService.getProductivitySummaryData({
         startDate: range.startDate,
@@ -1204,6 +1205,7 @@ const ProductivityAnalysisPage = () => {
 
     setDailyData(dailyRows);
     setTopActivities(topRows);
+    setActivityRows(scoredRows);
     setSummaryRows(summaryTrendRows);
   };
 
@@ -1242,13 +1244,13 @@ const ProductivityAnalysisPage = () => {
       try {
         await loadDashboardData(selectedRange, selectedCollaboratorIds);
       } catch (err) {
-        setError(err.message || 'Falha ao carregar dados salvos no banco.');
+        setError(err.message || 'Falha ao carregar dados de produtividade no Trello.');
       }
     };
 
     refreshByFilters();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRange?.startISO, selectedRange?.endISO, selectedCollaboratorIds.join('|')]);
+  }, [selectedRange?.startISO, selectedRange?.endISO, selectedCollaboratorIds.join('|'), settings.map((item) => `${item.action_type}:${item.points}`).join('|')]);
 
   const handleSaveSettings = async (draftSettings) => {
     setIsSavingSettings(true);
@@ -1279,15 +1281,14 @@ const ProductivityAnalysisPage = () => {
         selectedCollaboratorIds,
         settings,
         onProgress: (progressState) => setProgress(progressState),
-        onChunkStored: async () => {
-          await loadDashboardData(range, selectedCollaboratorIds);
-        },
       });
 
-      await loadDashboardData(range, selectedCollaboratorIds);
+      setDailyData(result.dailyData || []);
+      setTopActivities(result.topActivities || []);
+      setActivityRows(result.activityRows || []);
 
       setSuccess(
-        `${label} concluída: ${result.activitiesProcessed} atividades processadas em ${result.daysProcessed} dias, com ${result.aiCalls} chamadas de IA (até ${result.maxActivitiesPerCall} atividades por chamada).`
+        `${label} concluída: ${result.activitiesProcessed} atividades processadas em ${result.daysProcessed} dias, com ${result.aiCalls} chamadas de IA (até ${result.maxActivitiesPerCall} atividades por chamada). Os dados exibidos foram recalculados a partir do Trello.`
       );
     } catch (err) {
       setError(err.message || 'Falha ao analisar produtividade com IA.');
@@ -1338,7 +1339,7 @@ const ProductivityAnalysisPage = () => {
   };
 
   const openActivityHistoryModal = async ({ title, filters = {} }) => {
-    if (!selectedRange) return;
+    if (!selectedRange || activityRows.length === 0) return;
 
     setHistoryModalTitle(title);
     setHistoryRows([]);
@@ -1347,11 +1348,28 @@ const ProductivityAnalysisPage = () => {
     setIsLoadingHistory(true);
 
     try {
-      const rows = await productivityService.getProductivityActivityHistory({
-        startDate: selectedRange.startDate,
-        endDate: selectedRange.endDate,
-        selectedCollaboratorIds,
-        ...filters,
+      let rows = [...activityRows];
+
+      if (typeof filters.collaboratorId === 'string' && filters.collaboratorId.length > 0) {
+        rows = rows.filter((row) => row.collaborator_id === filters.collaboratorId);
+      }
+
+      if (filters.collaboratorId === null) {
+        rows = rows.filter((row) => !row.collaborator_id);
+      }
+
+      if (typeof filters.date === 'string' && filters.date.length > 0) {
+        rows = rows.filter((row) => row.date === filters.date);
+      }
+
+      if (typeof filters.activityType === 'string' && filters.activityType.length > 0) {
+        rows = rows.filter((row) => row.type === filters.activityType);
+      }
+
+      rows.sort((a, b) => {
+        const dateCompare = String(b.date || '').localeCompare(String(a.date || ''));
+        if (dateCompare !== 0) return dateCompare;
+        return String(b.id || '').localeCompare(String(a.id || ''));
       });
 
       setHistoryRows(rows);
@@ -1581,8 +1599,8 @@ const ProductivityAnalysisPage = () => {
             </span>
           )}
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${dark ? 'border-neutral-700 bg-neutral-800' : 'border-neutral-200 bg-neutral-50'}`}>
-            <FiDatabase size={12} />
-            Dados exibidos sempre a partir do Supabase
+            <FiBarChart2 size={12} />
+            Dados calculados a partir da API do Trello
           </span>
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${dark ? 'border-neutral-700 bg-neutral-800' : 'border-neutral-200 bg-neutral-50'}`}>
             <FiBarChart2 size={12} />
@@ -1606,7 +1624,7 @@ const ProductivityAnalysisPage = () => {
             className={`px-4 h-10 rounded-lg border text-xs font-bold uppercase tracking-widest disabled:opacity-60 flex items-center gap-2 ${dark ? 'border-neutral-700 bg-neutral-800 text-neutral-200 hover:bg-neutral-700/70' : 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50'}`}
           >
             <FiRefreshCw size={14} />
-            Recarregar do banco
+            Recarregar do Trello
           </button>
         </div>
 
@@ -1632,8 +1650,8 @@ const ProductivityAnalysisPage = () => {
         </div>
       ) : dailyData.length === 0 ? (
         <div className={`${cardClass} text-center py-16`}>
-          <p className={`font-medium ${dark ? 'text-white' : 'text-neutral-900'}`}>Nenhuma análise salva para o período selecionado.</p>
-          <p className={`text-sm mt-2 ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>Clique em “Analisar produtividade” para gerar e persistir os dados no Supabase.</p>
+          <p className={`font-medium ${dark ? 'text-white' : 'text-neutral-900'}`}>Nenhuma atividade encontrada no Trello para o período selecionado.</p>
+          <p className={`text-sm mt-2 ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>Ajuste filtros ou clique em “Analisar produtividade” para recalcular a pontuação com IA usando apenas dados do Trello.</p>
         </div>
       ) : (
         <>

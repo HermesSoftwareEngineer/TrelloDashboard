@@ -11,6 +11,140 @@ const DEFAULT_BOTTLENECK_PROMPT = String(import.meta.env.VITE_BOTTLENECK_AI_PROM
   'Use uma abordagem direta e orientada à execução.',
 ].join(' ');
 
+const DATE_FILTER_PRESET_OPTIONS = [
+  { value: 'all', label: 'Sem filtro' },
+  { value: 'this_month', label: 'Este mes' },
+  { value: 'last_month', label: 'Mes anterior' },
+  { value: 'this_quarter', label: 'Este trimestre' },
+  { value: 'last_quarter', label: 'Trimestre anterior' },
+  { value: 'this_year', label: 'Este ano' },
+  { value: 'last_year', label: 'Ano anterior' },
+  { value: 'custom', label: 'Periodo personalizado' },
+];
+
+const getStartOfDay = (date) => {
+  const value = new Date(date);
+  value.setHours(0, 0, 0, 0);
+  return value;
+};
+
+const getEndOfDay = (date) => {
+  const value = new Date(date);
+  value.setHours(23, 59, 59, 999);
+  return value;
+};
+
+const toDateInputValue = (date) => {
+  const safeDate = new Date(date);
+  if (Number.isNaN(safeDate.getTime())) return '';
+  const yyyy = safeDate.getFullYear();
+  const mm = String(safeDate.getMonth() + 1).padStart(2, '0');
+  const dd = String(safeDate.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const parseDateInput = (value) => {
+  if (!value) return null;
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+};
+
+const getPresetDateRange = (preset) => {
+  if (!preset || preset === 'all') return null;
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+
+  if (preset === 'this_month') {
+    return {
+      start: getStartOfDay(new Date(currentYear, currentMonth, 1)),
+      end: getEndOfDay(new Date(currentYear, currentMonth + 1, 0)),
+    };
+  }
+
+  if (preset === 'last_month') {
+    return {
+      start: getStartOfDay(new Date(currentYear, currentMonth - 1, 1)),
+      end: getEndOfDay(new Date(currentYear, currentMonth, 0)),
+    };
+  }
+
+  if (preset === 'this_quarter') {
+    const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
+    return {
+      start: getStartOfDay(new Date(currentYear, quarterStartMonth, 1)),
+      end: getEndOfDay(new Date(currentYear, quarterStartMonth + 3, 0)),
+    };
+  }
+
+  if (preset === 'last_quarter') {
+    const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
+    return {
+      start: getStartOfDay(new Date(currentYear, quarterStartMonth - 3, 1)),
+      end: getEndOfDay(new Date(currentYear, quarterStartMonth, 0)),
+    };
+  }
+
+  if (preset === 'this_year') {
+    return {
+      start: getStartOfDay(new Date(currentYear, 0, 1)),
+      end: getEndOfDay(new Date(currentYear, 11, 31)),
+    };
+  }
+
+  if (preset === 'last_year') {
+    return {
+      start: getStartOfDay(new Date(currentYear - 1, 0, 1)),
+      end: getEndOfDay(new Date(currentYear - 1, 11, 31)),
+    };
+  }
+
+  return null;
+};
+
+const isDateInRange = (dateValue, range) => {
+  if (!range) return true;
+  if (!dateValue) return false;
+
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return false;
+
+  return date >= range.start && date <= range.end;
+};
+
+const getCardCreatedDate = (card) => {
+  const id = String(card?.id || '');
+  if (id.length < 8) return null;
+
+  const timestampHex = id.slice(0, 8);
+  const timestampMs = Number.parseInt(timestampHex, 16) * 1000;
+  if (!Number.isFinite(timestampMs)) return null;
+
+  const date = new Date(timestampMs);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+};
+
+const getCardStartDate = (card) => {
+  if (card?.start) {
+    const parsedStart = new Date(card.start);
+    if (!Number.isNaN(parsedStart.getTime())) return parsedStart;
+  }
+
+  return getCardCreatedDate(card);
+};
+
+const getCardCompletionDate = (card) => {
+  if (!card?.dueComplete) return null;
+  if (!card?.due) return null;
+
+  const dueDate = new Date(card.due);
+  if (Number.isNaN(dueDate.getTime())) return null;
+  return dueDate;
+};
+
 const normalizeText = (value = '') => value
   .toString()
   .normalize('NFD')
@@ -100,6 +234,10 @@ const BottleneckAnalysisPage = ({ cards = [], customFields = [], members = [] })
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState('');
   const [analysisResult, setAnalysisResult] = useState(null);
+  const [startDateFilterPreset, setStartDateFilterPreset] = useState('all');
+  const [completionDateFilterPreset, setCompletionDateFilterPreset] = useState('all');
+  const [startDateCustomRange, setStartDateCustomRange] = useState({ start: '', end: '' });
+  const [completionDateCustomRange, setCompletionDateCustomRange] = useState({ start: '', end: '' });
 
   const loadAllCards = useCallback(async () => {
     try {
@@ -154,10 +292,46 @@ const BottleneckAnalysisPage = ({ cards = [], customFields = [], members = [] })
           membersLabel: buildMembersLabel(card, memberMap),
           bottleneck: resolveCustomFieldItemValue(bottleneckFieldItem, bottleneckField),
           cardUrl: card.url,
+          startDate: getCardStartDate(card),
+          completionDate: getCardCompletionDate(card),
         };
       })
       .sort((a, b) => a.title.localeCompare(b.title, 'pt-BR'));
   }, [allCards, bottleneckField, memberMap]);
+
+  const startDateRange = useMemo(() => {
+    if (startDateFilterPreset !== 'custom') {
+      return getPresetDateRange(startDateFilterPreset);
+    }
+
+    const customStart = parseDateInput(startDateCustomRange.start);
+    const customEnd = parseDateInput(startDateCustomRange.end);
+
+    if (!customStart || !customEnd) return null;
+    if (customStart > customEnd) return null;
+
+    return {
+      start: getStartOfDay(customStart),
+      end: getEndOfDay(customEnd),
+    };
+  }, [startDateFilterPreset, startDateCustomRange]);
+
+  const completionDateRange = useMemo(() => {
+    if (completionDateFilterPreset !== 'custom') {
+      return getPresetDateRange(completionDateFilterPreset);
+    }
+
+    const customStart = parseDateInput(completionDateCustomRange.start);
+    const customEnd = parseDateInput(completionDateCustomRange.end);
+
+    if (!customStart || !customEnd) return null;
+    if (customStart > customEnd) return null;
+
+    return {
+      start: getStartOfDay(customStart),
+      end: getEndOfDay(customEnd),
+    };
+  }, [completionDateFilterPreset, completionDateCustomRange]);
 
   const availableTags = useMemo(() => {
     const tagMap = new Map();
@@ -174,10 +348,11 @@ const BottleneckAnalysisPage = ({ cards = [], customFields = [], members = [] })
   }, [rows]);
 
   const filteredRows = useMemo(() => {
-    if (selectedTagIds.length === 0) return rows;
-
-    return rows.filter((row) => row.labelIds.some((labelId) => selectedTagIds.includes(labelId)));
-  }, [rows, selectedTagIds]);
+    return rows
+      .filter((row) => isDateInRange(row.startDate, startDateRange))
+      .filter((row) => isDateInRange(row.completionDate, completionDateRange))
+      .filter((row) => selectedTagIds.length === 0 || row.labelIds.some((labelId) => selectedTagIds.includes(labelId)));
+  }, [rows, selectedTagIds, startDateRange, completionDateRange]);
 
   const summaryStats = useMemo(() => {
     const withBottleneck = filteredRows.filter((row) => hasBottleneckDescription(row.bottleneck)).length;
@@ -197,15 +372,35 @@ const BottleneckAnalysisPage = ({ cards = [], customFields = [], members = [] })
     totalCards: rowsWithBottleneck.length,
     cardsWithBottleneck: summaryStats.withBottleneck,
     cardsWithoutBottleneck: summaryStats.withoutBottleneck,
-    selectedTagIds,
+    filters: {
+      selectedTagIds,
+      startDateFilterPreset,
+      completionDateFilterPreset,
+      startDateRange: startDateRange
+        ? { start: toDateInputValue(startDateRange.start), end: toDateInputValue(startDateRange.end) }
+        : null,
+      completionDateRange: completionDateRange
+        ? { start: toDateInputValue(completionDateRange.start), end: toDateInputValue(completionDateRange.end) }
+        : null,
+    },
     cards: rowsWithBottleneck.map((row) => ({
       title: row.title,
       members: row.membersLabel,
       labels: row.labels.map((label) => label.text),
       bottleneck: row.bottleneck,
       url: row.cardUrl,
+      startDate: row.startDate ? row.startDate.toISOString() : null,
+      completionDate: row.completionDate ? row.completionDate.toISOString() : null,
     })),
-  }), [rowsWithBottleneck, selectedTagIds, summaryStats]);
+  }), [
+    rowsWithBottleneck,
+    selectedTagIds,
+    summaryStats,
+    startDateFilterPreset,
+    completionDateFilterPreset,
+    startDateRange,
+    completionDateRange,
+  ]);
 
   const toggleTagFilter = (tagId) => {
     setSelectedTagIds((prev) => {
@@ -309,7 +504,7 @@ const BottleneckAnalysisPage = ({ cards = [], customFields = [], members = [] })
         </div>
       )}
 
-      <section className="mb-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <section className="mb-4 grid grid-cols-1 lg:grid-cols-5 gap-4">
         <article className={`rounded-xl border p-4 ${dark ? 'border-neutral-800 bg-neutral-900' : 'border-neutral-200 bg-white shadow-sm'}`}>
           <p className={`text-xs uppercase tracking-wider mb-2 ${dark ? 'text-neutral-400' : 'text-neutral-500'}`}>
             Cards com gargalos descritos
@@ -394,6 +589,78 @@ const BottleneckAnalysisPage = ({ cards = [], customFields = [], members = [] })
             {selectedTagIds.length > 0
               ? `${selectedTagIds.length} tag(s) selecionada(s)`
               : 'Nenhuma tag selecionada'}
+          </p>
+        </article>
+
+        <article className={`rounded-xl border p-4 ${dark ? 'border-neutral-800 bg-neutral-900' : 'border-neutral-200 bg-white shadow-sm'}`}>
+          <label className={`block text-xs uppercase tracking-wider mb-2 ${dark ? 'text-neutral-400' : 'text-neutral-500'}`}>
+            Data de inicio do card
+          </label>
+          <select
+            value={startDateFilterPreset}
+            onChange={(event) => setStartDateFilterPreset(event.target.value)}
+            className={`${dark ? 'bg-[#0c0c0c] border border-[#272727] text-[#f5f5f5]' : 'bg-white border border-[#e5e5e5] text-[#0c0c0c]'} w-full rounded-xl px-4 py-2 text-sm transition-colors cursor-pointer`}
+          >
+            {DATE_FILTER_PRESET_OPTIONS.map((option) => (
+              <option key={`start-${option.value}`} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+
+          {startDateFilterPreset === 'custom' && (
+            <div className="mt-2 grid grid-cols-1 gap-2">
+              <input
+                type="date"
+                value={startDateCustomRange.start}
+                onChange={(event) => setStartDateCustomRange((prev) => ({ ...prev, start: event.target.value }))}
+                className={`${dark ? 'bg-[#0c0c0c] border border-[#272727] text-[#f5f5f5]' : 'bg-white border border-[#e5e5e5] text-[#0c0c0c]'} w-full rounded-xl px-3 py-2 text-sm`}
+              />
+              <input
+                type="date"
+                value={startDateCustomRange.end}
+                onChange={(event) => setStartDateCustomRange((prev) => ({ ...prev, end: event.target.value }))}
+                className={`${dark ? 'bg-[#0c0c0c] border border-[#272727] text-[#f5f5f5]' : 'bg-white border border-[#e5e5e5] text-[#0c0c0c]'} w-full rounded-xl px-3 py-2 text-sm`}
+              />
+            </div>
+          )}
+
+          <p className={`mt-2 text-xs ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>
+            Se nao houver data de inicio, usa data de criacao.
+          </p>
+        </article>
+
+        <article className={`rounded-xl border p-4 ${dark ? 'border-neutral-800 bg-neutral-900' : 'border-neutral-200 bg-white shadow-sm'}`}>
+          <label className={`block text-xs uppercase tracking-wider mb-2 ${dark ? 'text-neutral-400' : 'text-neutral-500'}`}>
+            Data de conclusao do card
+          </label>
+          <select
+            value={completionDateFilterPreset}
+            onChange={(event) => setCompletionDateFilterPreset(event.target.value)}
+            className={`${dark ? 'bg-[#0c0c0c] border border-[#272727] text-[#f5f5f5]' : 'bg-white border border-[#e5e5e5] text-[#0c0c0c]'} w-full rounded-xl px-4 py-2 text-sm transition-colors cursor-pointer`}
+          >
+            {DATE_FILTER_PRESET_OPTIONS.map((option) => (
+              <option key={`completion-${option.value}`} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+
+          {completionDateFilterPreset === 'custom' && (
+            <div className="mt-2 grid grid-cols-1 gap-2">
+              <input
+                type="date"
+                value={completionDateCustomRange.start}
+                onChange={(event) => setCompletionDateCustomRange((prev) => ({ ...prev, start: event.target.value }))}
+                className={`${dark ? 'bg-[#0c0c0c] border border-[#272727] text-[#f5f5f5]' : 'bg-white border border-[#e5e5e5] text-[#0c0c0c]'} w-full rounded-xl px-3 py-2 text-sm`}
+              />
+              <input
+                type="date"
+                value={completionDateCustomRange.end}
+                onChange={(event) => setCompletionDateCustomRange((prev) => ({ ...prev, end: event.target.value }))}
+                className={`${dark ? 'bg-[#0c0c0c] border border-[#272727] text-[#f5f5f5]' : 'bg-white border border-[#e5e5e5] text-[#0c0c0c]'} w-full rounded-xl px-3 py-2 text-sm`}
+              />
+            </div>
+          )}
+
+          <p className={`mt-2 text-xs ${dark ? 'text-neutral-500' : 'text-neutral-600'}`}>
+            Considera cards com prazo marcado como concluido.
           </p>
         </article>
       </section>
