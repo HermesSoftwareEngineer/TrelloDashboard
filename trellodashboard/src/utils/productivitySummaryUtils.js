@@ -123,6 +123,32 @@ const createMetricLineData = (buckets, collaborators, metricKey) => (
   })
 );
 
+const buildRangeBuckets = (startDate, endDate, granularity) => {
+  if (!startDate || !endDate) return [];
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+
+  const bucketsMap = new Map();
+  const cursor = new Date(start);
+
+  while (cursor <= end) {
+    const bucket = getGranularityBucket(cursor, granularity);
+    if (!bucketsMap.has(bucket.bucketKey)) {
+      bucketsMap.set(bucket.bucketKey, {
+        ...bucket,
+        metricsByCollaborator: new Map(),
+      });
+    }
+
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return Array.from(bucketsMap.values());
+};
+
 export const resolveSummaryGranularity = (granularity, startDate, endDate) => {
   if (granularity && granularity !== PRODUCTIVITY_SUMMARY_GRANULARITY.AUTO) {
     return granularity;
@@ -189,6 +215,13 @@ export const buildProductivitySummarySeries = ({
   const collaborators = Array.from(collaboratorTotals.values())
     .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'pt-BR'))
     .map(({ total, ...collaborator }) => collaborator);
+
+  const rangeBuckets = buildRangeBuckets(startDate, endDate, resolvedGranularity);
+  rangeBuckets.forEach((bucket) => {
+    if (!bucketsMap.has(bucket.bucketKey)) {
+      bucketsMap.set(bucket.bucketKey, bucket);
+    }
+  });
 
   const buckets = Array.from(bucketsMap.values())
     .sort((a, b) => a.sortKey - b.sortKey);
